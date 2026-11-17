@@ -1365,6 +1365,44 @@ function App() {
           </div>
         </section>
       </main>
+      <nav className="mobile-nav" aria-label="Navegación móvil">
+        <button
+          type="button"
+          className="mobile-nav-item is-active"
+          aria-current="page"
+          onClick={() => document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })}
+        >
+          <CalendarDays size={20} />
+          <span>Hoy</span>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-item"
+          onClick={openPrescriptionReview}
+        >
+          <FileText size={20} />
+          <span>Receta</span>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-item"
+          onClick={() => {
+            setScheduleView('list')
+            document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+          }}
+        >
+          <List size={20} />
+          <span>Listado</span>
+        </button>
+        <button
+          type="button"
+          className="mobile-nav-item"
+          onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+        >
+          <Menu size={20} />
+          <span>Más</span>
+        </button>
+      </nav>
       {isPrescriptionReviewOpen && (
         <div
           className="modal-backdrop"
