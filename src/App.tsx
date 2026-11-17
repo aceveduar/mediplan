@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
-  Columns3,
   Download,
   FileText,
   List,
@@ -35,7 +34,7 @@ type PrescriptionEntry = {
 }
 
 type DoseStatus = 'pending' | 'given' | 'skipped'
-type ScheduleView = 'today' | 'list' | 'calendar' | 'kanban'
+type ScheduleView = 'today' | 'list' | 'calendar'
 type DoseFilter = 'all' | DoseStatus
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
@@ -610,10 +609,13 @@ function App() {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0)
   }
   const calendarDays = Array.from({ length: 7 }, (_, index) => addDays(visibleWeekStart, index))
-  const todaysDoses = scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, currentTime))
+  const todaysDoses = scheduleEvents
+    .filter((dose) => isSameDay(dose.scheduledAt, currentTime))
+    .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
   const todaysPendingCount = todaysDoses.filter((dose) => dose.status === 'pending').length
   const todaysGivenCount = todaysDoses.filter((dose) => dose.status === 'given').length
   const todaysSkippedCount = todaysDoses.filter((dose) => dose.status === 'skipped').length
+  const nextTodayDose = todaysDoses.find((dose) => dose.status === 'pending')
   const statusCounts = {
     pending: scheduleEvents.filter((dose) => dose.status === 'pending').length,
     given: scheduleEvents.filter((dose) => dose.status === 'given').length,
@@ -715,9 +717,9 @@ function App() {
     setScheduleAdjustmentConfirmed(false)
     setScheduleAdjustmentError('')
   }
-  const renderDoseCard = (dose: ScheduledDose, compact = false) => (
+  const renderDoseCard = (dose: ScheduledDose, compact = false, isNextDose = false) => (
     <article
-      className={`dose-card dose-card-${dose.status}${compact ? ' dose-card-compact' : ''}`}
+      className={`dose-card dose-card-${dose.status}${compact ? ' dose-card-compact' : ''}${isNextDose ? ' dose-card-next' : ''}`}
       key={dose.id}
       title={`${dose.medicationName} · ${dose.instructions}`}
     >
@@ -730,6 +732,7 @@ function App() {
             ? dose.status === 'given' ? 'Dada' : dose.status === 'skipped' ? 'Omitida' : 'Pendiente'
             : dose.status === 'given' ? 'Administrada' : dose.status === 'skipped' ? 'Omitida' : 'Por dar'}
         </span>
+        {isNextDose && <span className="dose-priority-label">Siguiente</span>}
       </div>
       <strong>{dose.medicationName}</strong>
       {dose.status === 'given' && dose.administeredAt && (
@@ -757,7 +760,7 @@ function App() {
               aria-label={`Marcar ${dose.medicationName} como administrada`}
               onClick={() => updateDoseStatus(dose.id, 'given')}
             >
-              {compact ? 'Ya la di' : 'Marcar administrada'}
+              Ya la di
             </button>
             <button
               type="button"
@@ -775,7 +778,7 @@ function App() {
             aria-label={`Volver a marcar ${dose.medicationName} por dar`}
             onClick={() => updateDoseStatus(dose.id, 'pending')}
           >
-            {compact ? 'Deshacer' : 'Volver a por dar'}
+            Deshacer
           </button>
         )}
       </div>
@@ -839,7 +842,7 @@ function App() {
             aria-label="Seguimiento"
             title={isSidebarCollapsed ? 'Seguimiento' : undefined}
             onClick={() => {
-              setScheduleView('kanban')
+              setScheduleView('list')
               document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
             }}
           >
@@ -1145,45 +1148,42 @@ function App() {
 
             {scheduleEvents.length > 0 ? (
               <div className="generated-schedule">
-                <div className="tracking-overview">
+                <div className={`tracking-overview ${scheduleView === 'today' ? 'is-today-view' : ''}`}>
                   <div className="today-summary" role="status" aria-live="polite">
                     <span className="overview-label">Resumen de hoy</span>
-                    <strong>{todaysDoses.length} tomas programadas</strong>
+                    <strong>
+                      {todaysDoses.length === 0
+                        ? 'Sin tomas programadas'
+                        : `${todaysGivenCount} de ${todaysDoses.length} administradas`}
+                    </strong>
                     <span>{todaysPendingCount} por dar · {todaysGivenCount} administradas · {todaysSkippedCount} omitidas</span>
-                    <span>{scheduleEvents.length} tomas en el plan · estado guardado en este navegador</span>
+                    <div
+                      className="today-progress-track"
+                      role="img"
+                      aria-label={todaysDoses.length === 0
+                        ? 'Sin tomas programadas hoy'
+                        : `${todaysGivenCount} de ${todaysDoses.length} tomas administradas hoy`}
+                    >
+                      <span style={{
+                        width: `${todaysDoses.length ? (todaysGivenCount / todaysDoses.length) * 100 : 0}%`,
+                      }} />
+                    </div>
                   </div>
-                  <div className="next-dose-summary">
-                    <span className="overview-label">Siguiente por registrar</span>
-                    {nextPendingDose ? (
-                      <>
-                        <time dateTime={nextPendingDose.scheduledAt.toISOString()}>
-                          {format(nextPendingDose.scheduledAt, 'EEE d MMM, HH:mm', { locale: es })}
-                        </time>
-                        <strong>{nextPendingDose.medicationName}</strong>
-                        <span>Marca el estado solo después de comprobar la toma.</span>
-                        <div className="next-dose-actions">
-                          <button
-                            type="button"
-                            className="dose-action-primary"
-                            aria-label={`Marcar ${nextPendingDose.medicationName} como administrada`}
-                            onClick={() => updateDoseStatus(nextPendingDose.id, 'given')}
-                          >
-                            Ya la di
-                          </button>
-                          <button
-                            type="button"
-                            className="dose-action-secondary"
-                            aria-label={`Marcar ${nextPendingDose.medicationName} como omitida`}
-                            onClick={() => updateDoseStatus(nextPendingDose.id, 'skipped')}
-                          >
-                            Omitir
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <strong>Todas las tomas tienen estado registrado.</strong>
-                    )}
-                  </div>
+                  {scheduleView !== 'today' && (
+                    <div className="next-dose-summary">
+                      <span className="overview-label">Siguiente por registrar</span>
+                      {nextPendingDose ? (
+                        <>
+                          <time dateTime={nextPendingDose.scheduledAt.toISOString()}>
+                            {format(nextPendingDose.scheduledAt, 'EEE d MMM, HH:mm', { locale: es })}
+                          </time>
+                          <strong>{nextPendingDose.medicationName}</strong>
+                        </>
+                      ) : (
+                        <strong>Todas las tomas tienen estado registrado.</strong>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="schedule-toolbar">
                   <div className="schedule-view-switch" role="group" aria-label="Cambiar vista de tomas">
@@ -1210,15 +1210,7 @@ function App() {
                       aria-pressed={scheduleView === 'calendar'}
                       onClick={() => setScheduleView('calendar')}
                     >
-                      <CalendarDays size={16} /> Calendario
-                    </button>
-                    <button
-                      type="button"
-                      className={scheduleView === 'kanban' ? 'is-active' : ''}
-                      aria-pressed={scheduleView === 'kanban'}
-                      onClick={() => setScheduleView('kanban')}
-                    >
-                      <Columns3 size={16} /> Kanban
+                      <CalendarDays size={16} /> Semana
                     </button>
                   </div>
                   {scheduleView === 'calendar' && (
@@ -1262,7 +1254,11 @@ function App() {
                     </div>
                     {todaysDoses.length > 0 ? (
                       <div className="dose-list-view today-dose-list">
-                        {todaysDoses.map((dose) => renderDoseCard(dose))}
+                        {todaysDoses.map((dose) => renderDoseCard(
+                          dose,
+                          false,
+                          dose.id === nextTodayDose?.id,
+                        ))}
                       </div>
                     ) : (
                       <div className="today-empty-state">
@@ -1331,27 +1327,6 @@ function App() {
                         </section>
                       )
                     })}
-                  </div>
-                )}
-                {scheduleView === 'kanban' && (
-                  <div className="dose-kanban">
-                    {([
-                      ['pending', 'Por dar', statusCounts.pending],
-                      ['given', 'Administradas', statusCounts.given],
-                      ['skipped', 'Omitidas', statusCounts.skipped],
-                    ] as const).map(([status, label, count]) => (
-                      <section className={`kanban-column kanban-${status}`} key={status}>
-                        <header>
-                          <h4>{label}</h4>
-                          <span>{count}</span>
-                        </header>
-                        <div className="kanban-column-doses">
-                          {scheduleEvents
-                            .filter((dose) => dose.status === status)
-                            .map((dose) => renderDoseCard(dose))}
-                        </div>
-                      </section>
-                    ))}
                   </div>
                 )}
                 <button type="button" className="export-json-button" onClick={downloadScheduleJson}>

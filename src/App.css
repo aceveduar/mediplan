@@ -3365,9 +3365,13 @@ button:disabled {
   align-items: stretch;
 }
 
+.tracking-overview.is-today-view {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .today-summary,
 .next-dose-summary {
-  min-height: 154px;
+  min-height: 0;
   border: 1px solid var(--color-line);
   border-radius: 16px;
   background: linear-gradient(145deg, #fff, var(--color-surface-soft));
@@ -3382,6 +3386,36 @@ button:disabled {
 
 .next-dose-summary strong {
   color: var(--color-ink);
+}
+
+.today-progress-track {
+  height: 7px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--color-line);
+}
+
+.today-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-primary), #69b9a7);
+  transition: width 180ms ease;
+}
+
+.dose-card-next {
+  border-color: var(--color-primary);
+  box-shadow: inset 4px 0 0 var(--color-primary), 0 8px 20px rgba(23, 59, 61, 0.07);
+}
+
+.dose-priority-label {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-deep);
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .next-dose-actions {
@@ -3526,7 +3560,7 @@ button:disabled {
 
   .schedule-view-switch {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .schedule-view-switch button {
