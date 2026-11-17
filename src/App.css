@@ -2827,3 +2827,327 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Accessibility and responsive polish */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  transform: translateY(-160%);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--color-primary-deep);
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+  box-shadow: 0 10px 24px rgba(23, 59, 61, 0.24);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.app-shell {
+  max-width: 1500px;
+  min-height: 100vh;
+  margin-inline: auto;
+}
+
+.sidebar {
+  position: sticky;
+  top: 12px;
+  height: calc(100vh - 28px);
+  max-height: 860px;
+}
+
+.topbar {
+  position: relative;
+  z-index: 5;
+  margin: -4px -2px 0;
+  padding: 10px 2px 12px;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+}
+
+.top-actions button,
+.sidebar-toggle,
+.nav-item,
+.schedule-view-switch button,
+.dose-card-actions button,
+.week-navigation button,
+.review-button,
+.save-edit-button,
+.cancel-edit-button,
+.confirm-item-button,
+.edit-entry-button {
+  min-height: 44px;
+}
+
+.nav-item {
+  position: relative;
+  border: 1px solid transparent;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  width: 4px;
+  height: 22px;
+  border-radius: 0 999px 999px 0;
+  background: var(--color-primary);
+}
+
+.upload-card,
+.calendar-panel,
+.plan-status-banner,
+.setup-progress-banner {
+  animation: panel-enter 280ms ease-out both;
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled {
+  opacity: 0.58;
+  box-shadow: none;
+}
+
+.tracking-overview {
+  align-items: stretch;
+}
+
+.today-summary,
+.next-dose-summary {
+  min-height: 154px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: linear-gradient(145deg, #fff, var(--color-surface-soft));
+  padding: 16px;
+}
+
+.next-dose-summary {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+
+.next-dose-summary strong {
+  color: var(--color-ink);
+}
+
+.next-dose-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.next-dose-actions button {
+  min-height: 44px;
+  border-radius: 10px;
+  padding-inline: 14px;
+  font-weight: 800;
+}
+
+.dose-card {
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.dose-card:hover {
+  border-color: var(--color-focus);
+  box-shadow: 0 8px 20px rgba(23, 59, 61, 0.08);
+  transform: translateY(-1px);
+}
+
+.dose-card-actions button,
+.next-dose-actions button {
+  min-height: 44px;
+}
+
+.dose-action-primary {
+  background: var(--color-primary-deep);
+  border-color: var(--color-primary-deep);
+  color: #fff;
+}
+
+.dose-action-primary:hover {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.modal-backdrop {
+  z-index: 50;
+}
+
+.review-modal {
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    min-height: 100vh;
+  }
+
+  .sidebar {
+    position: relative;
+    top: auto;
+    height: auto;
+    max-height: none;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    margin: 0 -12px;
+    padding: 10px 12px;
+    border-bottom-color: var(--color-line);
+    background: rgba(248, 250, 247, 0.94);
+    backdrop-filter: blur(12px);
+  }
+
+  .top-actions {
+    gap: 8px;
+  }
+
+  .top-actions .ghost-btn {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 8px;
+  }
+
+  .topbar {
+    margin: 0 -8px;
+    padding-inline: 8px;
+  }
+
+  .topbar h1 {
+    font-size: 1.65rem;
+  }
+
+  .top-actions {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .top-actions .ghost-btn {
+    width: 100%;
+  }
+
+  .top-actions .sidebar-toggle {
+    grid-column: 1;
+  }
+
+  .upload-header {
+    flex-direction: column;
+  }
+
+  .status-pill {
+    max-width: 100%;
+  }
+
+  .upload-box {
+    min-height: 112px;
+  }
+
+  .meta-list {
+    width: 100%;
+  }
+
+  .meta-list > div {
+    border-left: 0;
+    border-bottom: 1px solid var(--color-line);
+    padding: 0 0 10px;
+  }
+
+  .selected-file-card {
+    align-items: flex-start;
+  }
+
+  .next-dose-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .schedule-view-switch {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .schedule-view-switch button {
+    min-width: 0;
+  }
+
+  .schedule-view-switch button svg {
+    display: none;
+  }
+
+  .dose-filter-switch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .calendar-week-grid,
+  .dose-kanban {
+    scroll-snap-type: x proximity;
+  }
+
+  .calendar-day,
+  .kanban-column {
+    scroll-snap-align: start;
+  }
+
+  .modal-backdrop {
+    padding: 0;
+    place-items: end center;
+  }
+
+  .review-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .modal-footer {
+    position: sticky;
+    bottom: -18px;
+    margin: 18px -18px -18px;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.96);
+    border-top: 1px solid var(--color-line);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

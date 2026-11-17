@@ -781,7 +781,9 @@ function App() {
   )
 
   return (
-    <div className={`app-shell ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+    <>
+      <a className="skip-link" href="#main-content">Ir al contenido principal</a>
+      <div className={`app-shell ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
       <aside
         className={`sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}
         id="primary-sidebar"
@@ -852,7 +854,7 @@ function App() {
         </div>
       </aside>
 
-      <main className="main-panel">
+      <main className="main-panel" id="main-content">
         <header className="topbar">
           <div>
             <p className="eyebrow">Plan de medicación</p>
@@ -1626,7 +1628,8 @@ function App() {
           </section>
         </div>
       )}
-    </div>
+      </div>
+    </>
   )
 }
 
