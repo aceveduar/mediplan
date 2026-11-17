@@ -2865,9 +2865,9 @@
 }
 
 .main-panel {
-  max-width: 1180px;
+  max-width: none;
   width: 100%;
-  margin-inline: auto;
+  margin-inline: 0;
 }
 
 .topbar {
@@ -3280,7 +3280,7 @@
 }
 
 .app-shell {
-  max-width: 1500px;
+  max-width: 1800px;
   min-height: 100vh;
   margin-inline: auto;
 }
