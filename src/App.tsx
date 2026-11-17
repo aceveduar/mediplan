@@ -280,7 +280,9 @@ function getScheduleRule(detail: string, selectedDurationDays?: number) {
 
 function App() {
   const [initialData] = useState(getInitialAppData)
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => window.matchMedia('(max-width: 980px)').matches,
+  )
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null)
   const [isAppInstalled, setIsAppInstalled] = useState(
     () => window.matchMedia('(display-mode: standalone)').matches,
@@ -783,7 +785,7 @@ function App() {
   return (
     <>
       <a className="skip-link" href="#main-content">Ir al contenido principal</a>
-      <div className={`app-shell ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
+      <div className={`app-shell ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${scheduleEvents.length > 0 ? 'has-active-plan' : 'is-setup'}`}>
       <aside
         className={`sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}
         id="primary-sidebar"
@@ -799,11 +801,14 @@ function App() {
         <nav className="nav-menu" aria-label="Navegación principal">
           <button
             type="button"
-            className="nav-item active"
-            aria-current="page"
+            className={`nav-item ${scheduleView === 'today' ? 'active' : ''}`}
+            aria-current={scheduleView === 'today' ? 'page' : undefined}
             aria-label="Calendario"
             title={isSidebarCollapsed ? 'Calendario' : undefined}
-            onClick={() => document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })}
+            onClick={() => {
+              setScheduleView('today')
+              document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+            }}
           >
             <CalendarDays size={18} />
             <span className="nav-label">Calendario</span>
@@ -884,7 +889,12 @@ function App() {
                 Instalar app
               </button>
             )}
-            <button className="ghost-btn" type="button" onClick={openPrescriptionReview}>
+            <button
+              className="ghost-btn"
+              type="button"
+              aria-label="Revisar indicaciones de la receta"
+              onClick={openPrescriptionReview}
+            >
               <FileText size={16} />
               Revisar indicaciones
             </button>
@@ -907,7 +917,7 @@ function App() {
             <div className="setup-progress-copy">
               <span className="setup-progress-kicker">PASO 1 DE 2</span>
               <strong>Revisa las indicaciones</strong>
-              <span>Compara la transcripción con la receta; después elegirás cuándo inicia cada medicamento.</span>
+              <span>Confirma cada medicamento con la receta antes de crear el calendario.</span>
             </div>
             <div className="setup-progress-count">
               <strong>{confirmedItems.length}/{prescriptionEntries.length}</strong>
@@ -916,6 +926,13 @@ function App() {
                 <span style={{ width: `${prescriptionEntries.length ? (confirmedItems.length / prescriptionEntries.length) * 100 : 0}%` }} />
               </div>
             </div>
+            <button
+              type="button"
+              className="setup-progress-action"
+              onClick={openPrescriptionReview}
+            >
+              Comenzar revisión
+            </button>
           </div>
         )}
         {persistenceError && <p className="file-error" role="alert">{persistenceError}</p>}
@@ -925,18 +942,18 @@ function App() {
             <div className="upload-header">
               <div className="status-pill">
                 <Sparkles size={15} />
-                {selectedFileName ? 'Archivo de referencia' : 'Transcripción de receta'}
+                {selectedFileName ? 'Archivo de referencia' : 'Revisión de indicaciones'}
               </div>
               <span className="muted">
-                {selectedFileName ? 'No se interpreta automáticamente' : `${prescriptionEntries.length - confirmedItems.length} indicaciones por confirmar`}
+                {selectedFileName ? 'Vista previa en este dispositivo' : 'Adjunto opcional'}
               </span>
             </div>
 
             <div className="upload-body">
               <button type="button" className="upload-box" onClick={openFilePicker}>
                 <Upload size={28} />
-                <strong>{selectedFileName ? 'Cambiar archivo' : 'Adjuntar archivo de referencia'}</strong>
-                <span>JPG, PNG, WebP o PDF · máximo 10 MB</span>
+                <strong>{selectedFileName ? 'Cambiar archivo' : 'Añadir foto o PDF (opcional)'}</strong>
+                <span>JPG, PNG, WebP o PDF · solo vista previa</span>
               </button>
               <input
                 ref={fileInputRef}
@@ -949,12 +966,12 @@ function App() {
 
               <div className="meta-list">
                 <div>
-                  <span className="label">Lectura</span>
-                  <strong>Transcripción compartida</strong>
+                  <span className="label">Privacidad</span>
+                  <strong>Datos guardados en este dispositivo</strong>
                 </div>
                 <div>
-                  <span className="label">Origen</span>
-                  <strong>{selectedFileName ? 'Archivo solo de referencia' : 'Conversación compartida'}</strong>
+                  <span className="label">Archivo</span>
+                  <strong>{selectedFileName ? 'Vista previa temporal' : 'No necesitas adjuntarlo'}</strong>
                 </div>
               </div>
             </div>
@@ -984,7 +1001,7 @@ function App() {
               </div>
             )}
             <p className="file-notice">
-              Si adjuntas una imagen o PDF, solo verás una vista previa: MediPlan no extrae datos automáticamente. Compara la transcripción con la receta original.
+              Adjuntar la receta es opcional. El archivo solo se previsualiza aquí; MediPlan no lo interpreta ni lo envía a internet.
             </p>
             <button
               type="button"
@@ -992,8 +1009,8 @@ function App() {
               onClick={openPrescriptionReview}
             >
               <FileText size={16} />
-              Revisar indicaciones
-              {confirmedItems.length < prescriptionEntries.length && ` · ${prescriptionEntries.length - confirmedItems.length} pendientes`}
+              Revisar receta
+              {confirmedItems.length < prescriptionEntries.length && ` · ${prescriptionEntries.length - confirmedItems.length}`}
             </button>
           </div>
 
@@ -1368,16 +1385,20 @@ function App() {
       <nav className="mobile-nav" aria-label="Navegación móvil">
         <button
           type="button"
-          className="mobile-nav-item is-active"
-          aria-current="page"
-          onClick={() => document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })}
+          className={`mobile-nav-item ${scheduleView === 'today' ? 'is-active' : ''}`}
+          aria-current={scheduleView === 'today' ? 'page' : undefined}
+          onClick={() => {
+            setScheduleView('today')
+            document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+          }}
         >
           <CalendarDays size={20} />
           <span>Hoy</span>
         </button>
         <button
           type="button"
-          className="mobile-nav-item"
+          className={`mobile-nav-item ${isPrescriptionReviewOpen ? 'is-active' : ''}`}
+          aria-current={isPrescriptionReviewOpen ? 'page' : undefined}
           onClick={openPrescriptionReview}
         >
           <FileText size={20} />
@@ -1385,7 +1406,9 @@ function App() {
         </button>
         <button
           type="button"
-          className="mobile-nav-item"
+          className={`mobile-nav-item ${scheduleView === 'list' ? 'is-active' : ''}`}
+          aria-current={scheduleView === 'list' ? 'page' : undefined}
+          disabled={scheduleEvents.length === 0}
           onClick={() => {
             setScheduleView('list')
             document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
@@ -1396,7 +1419,8 @@ function App() {
         </button>
         <button
           type="button"
-          className="mobile-nav-item"
+          className={`mobile-nav-item ${!isSidebarCollapsed ? 'is-active' : ''}`}
+          aria-expanded={!isSidebarCollapsed}
           onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
         >
           <Menu size={20} />

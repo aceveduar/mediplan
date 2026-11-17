@@ -2910,12 +2910,20 @@
   box-shadow: 0 10px 28px rgba(23, 59, 61, 0.055);
 }
 
-.hero-grid {
+.app-shell.has-active-plan .hero-grid {
   order: 2;
 }
 
-.content-grid {
+.app-shell.has-active-plan .content-grid {
   order: 1;
+}
+
+.app-shell.is-setup .hero-grid {
+  order: 1;
+}
+
+.app-shell.is-setup .content-grid {
+  order: 2;
 }
 
 .upload-card {
@@ -3075,6 +3083,11 @@
     display: flex;
   }
 
+  .top-actions .sidebar-toggle,
+  .top-actions > button:last-child {
+    display: none;
+  }
+
   .top-actions .ghost-btn:not(.sidebar-toggle) {
     max-width: 44px;
     min-width: 44px;
@@ -3185,8 +3198,64 @@
     padding: 5px 10px;
   }
 
+  .mobile-nav-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
   .review-modal {
     max-height: 94vh;
+  }
+}
+
+.setup-progress-banner {
+  grid-template-columns: 38px minmax(0, 1fr) minmax(100px, 150px) auto;
+}
+
+.setup-progress-action {
+  min-height: 44px;
+  border: 0;
+  border-radius: 11px;
+  padding: 0 15px;
+  background: var(--color-primary-deep);
+  color: #fff;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.setup-progress-action:hover {
+  transform: translateY(-1px);
+  background: var(--color-primary);
+}
+
+.setup-progress-action:focus-visible,
+.mobile-nav-item:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+.upload-box span {
+  line-height: 1.4;
+}
+
+.file-notice {
+  border: 1px solid rgba(217, 231, 225, 0.75);
+}
+
+@media (max-width: 720px) {
+  .setup-progress-banner {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .setup-progress-count,
+  .setup-progress-action {
+    grid-column: 2;
+  }
+
+  .setup-progress-action {
+    justify-self: start;
   }
 }
 
