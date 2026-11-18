@@ -22,7 +22,6 @@ import {
   FileText,
   List,
   Menu,
-  Pill,
   Sparkles,
   Sun,
   Upload,
@@ -34,9 +33,9 @@ import { DoseCard } from './components/DoseCard'
 import { DoseTimePreview } from './components/DoseTimePreview'
 import { MobileNavigation, Sidebar } from './components/Navigation'
 import {
-  PrescriptionEditForm,
   type PrescriptionEditValues,
 } from './components/PrescriptionEditForm'
+import { PrescriptionReviewList } from './components/PrescriptionReviewList'
 import { ScheduleSetup } from './components/ScheduleSetup'
 
 const recipeAnalysis = {
@@ -1311,75 +1310,23 @@ function App() {
             )}
 
             {!isScheduleSetupOpen ? (
-              <>
-                <div className="review-progress" role="status" aria-live="polite">
-                  <span>{confirmedItems.length} de {prescriptionEntries.length} indicaciones revisadas</span>
-                  <div className="review-progress-track">
-                    <span style={{ width: `${(confirmedItems.length / prescriptionEntries.length) * 100}%` }} />
-                  </div>
-                </div>
-
-                <div className="prescription-list">
-                  {prescriptionEntries.map((item) => (
-                    <article className="prescription-item" key={item.id}>
-                      <div className="prescription-icon"><Pill size={18} /></div>
-                      {editingEntryId === item.id ? (
-                        <PrescriptionEditForm
-                          entryId={item.id}
-                          values={editValues}
-                          error={editError}
-                          setValues={setEditValues}
-                          setError={setEditError}
-                          onCancel={() => setEditingEntryId(null)}
-                          onSubmit={saveCorrection}
-                        />
-                      ) : (
-                        <>
-                          <div>
-                            <h3>{item.name}</h3>
-                            <p>{item.detail}</p>
-                            <small>{item.uncertainty}</small>
-                          </div>
-                          <div className="prescription-actions">
-                            <button
-                              type="button"
-                              className="edit-entry-button"
-                              onClick={() => beginEditing(item)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              className={`confirm-item-button ${confirmedItems.includes(item.id) ? 'is-confirmed' : ''}`}
-                              aria-pressed={confirmedItems.includes(item.id)}
-                              onClick={() => toggleConfirmation(item.id)}
-                            >
-                              {confirmedItems.includes(item.id) ? 'Revisada ✓' : 'Coincide'}
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </article>
-                  ))}
-                </div>
-
-                {allItemsConfirmed && (
-                  <div className="review-complete" role="status" aria-live="polite">
-                    <strong>Lectura revisada.</strong>
-                    <span>Siguiente: indicar cuándo será la primera toma de cada medicamento.</span>
-                    <button
-                      type="button"
-                      className="save-edit-button"
-                      onClick={() => {
-                        setIsScheduleSetupOpen(true)
-                        setScheduleError('')
-                      }}
-                    >
-                      Continuar al calendario
-                    </button>
-                  </div>
-                )}
-              </>
+              <PrescriptionReviewList
+                entries={prescriptionEntries}
+                confirmedItems={confirmedItems}
+                editingEntryId={editingEntryId}
+                editValues={editValues}
+                editError={editError}
+                setEditValues={setEditValues}
+                setEditError={setEditError}
+                onCancelEditing={() => setEditingEntryId(null)}
+                onSaveCorrection={saveCorrection}
+                onBeginEditing={beginEditing}
+                onToggleConfirmation={toggleConfirmation}
+                onContinueToSchedule={() => {
+                  setIsScheduleSetupOpen(true)
+                  setScheduleError('')
+                }}
+              />
             ) : (
               <ScheduleSetup
                 prescriptionEntries={prescriptionEntries}
