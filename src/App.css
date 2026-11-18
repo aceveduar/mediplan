@@ -3002,21 +3002,47 @@
 }
 
 .today-dose-list .dose-card {
-  grid-template-columns: 112px minmax(160px, 1fr) auto;
+  grid-template-columns: minmax(190px, 240px) minmax(0, 1fr) max-content;
+  grid-template-areas:
+    "heading title actual"
+    "heading instructions actions";
   align-items: center;
-  padding: 14px 16px;
+  column-gap: 18px;
+  row-gap: 4px;
+  padding: 14px 18px;
 }
 
 .today-dose-list .dose-card-heading {
-  justify-content: flex-start;
-  flex-wrap: wrap;
+  grid-area: heading;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
 }
 
 .today-dose-list .dose-card > strong {
+  grid-area: title;
+  align-self: end;
   font-size: 0.98rem;
+  line-height: 1.3;
+}
+
+.today-dose-list .dose-actual-time {
+  grid-area: actual;
+  align-self: start;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.today-dose-list .dose-instructions {
+  grid-area: instructions;
+  align-self: start;
+  line-height: 1.45;
 }
 
 .today-dose-list .dose-card-actions {
+  grid-area: actions;
+  align-self: end;
   justify-content: flex-end;
 }
 
@@ -3050,7 +3076,7 @@
   }
 
   .today-dose-list .dose-card {
-    grid-template-columns: 96px minmax(140px, 1fr) auto;
+    grid-template-columns: minmax(155px, 205px) minmax(0, 1fr) max-content;
   }
 }
 
@@ -3134,11 +3160,28 @@
   }
 
   .today-dose-list .dose-card {
-    grid-template-columns: 78px minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) max-content;
+    grid-template-areas:
+      "heading actual"
+      "title title"
+      "instructions instructions"
+      "actions actions";
+    column-gap: 8px;
+    row-gap: 6px;
+  }
+
+  .today-dose-list .dose-card-heading {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .today-dose-list .dose-actual-time {
+    white-space: normal;
   }
 
   .today-dose-list .dose-card-actions {
-    grid-column: 1 / -1;
     justify-content: stretch;
   }
 
