@@ -19,6 +19,6 @@ npm run lint
 npm run build
 ```
 
-GitHub Actions ejecuta las pruebas y compila la aplicación antes de publicar `dist/` en GitHub Pages al actualizar `main`.
+GitHub Actions ejecuta lint, pruebas y compilación en cada pull request hacia `main`. Al actualizar `main`, vuelve a validar el proyecto antes de publicar `dist/` en GitHub Pages.
 
 Los datos solo se guardan en este navegador. Borrar sus datos o cambiar de dispositivo puede hacer que se pierdan; exporta una copia desde la aplicación si necesitas conservarlos.
