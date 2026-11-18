@@ -95,6 +95,11 @@ function toLocalDateTimeValue(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
+function formatScheduleTime(date: Date, datePattern?: string) {
+  const dateLabel = datePattern ? `${format(date, datePattern, { locale: es })}, ` : ''
+  return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
+}
+
 const initialPrescriptionEntries: PrescriptionEntry[] = [
   {
     id: 'combination-medicine',
@@ -786,7 +791,7 @@ function App() {
     >
       <div className="dose-card-heading">
         <time dateTime={dose.scheduledAt.toISOString()}>
-          {format(dose.scheduledAt, compact ? 'HH:mm' : 'EEE d MMM, HH:mm', { locale: es })}
+          {formatScheduleTime(dose.scheduledAt, compact ? undefined : 'EEE d MMM')}
         </time>
         <span className={`dose-status dose-status-${dose.status}`}>
           {compact
@@ -802,12 +807,9 @@ function App() {
           {compact
             ? 'Real'
             : isSameDay(dose.administeredAt, dose.scheduledAt) ? 'Administrada' : 'Administrada el'}
-          {' '}{format(
+          {' '}{formatScheduleTime(
             dose.administeredAt,
-            isSameDay(dose.administeredAt, dose.scheduledAt)
-              ? 'HH:mm'
-              : compact ? 'd MMM HH:mm' : 'd MMM, HH:mm',
-            { locale: es },
+            isSameDay(dose.administeredAt, dose.scheduledAt) ? undefined : 'd MMM',
           )}
         </span>
       )}
@@ -1125,7 +1127,7 @@ function App() {
                         <div>
                           <strong>{series.medicationName}</strong>
                           <span>
-                            Próxima: {format(series.doses[0].scheduledAt, 'EEE d MMM, HH:mm', { locale: es })}
+                            Próxima: {formatScheduleTime(series.doses[0].scheduledAt, 'EEE d MMM')}
                             {' · '}{series.doses.length} {series.doses.length === 1 ? 'pendiente' : 'pendientes'}
                             {intervalHours ? ` · cada ${intervalHours} h` : ''}
                           </span>
@@ -1233,7 +1235,7 @@ function App() {
                       {nextPendingDose ? (
                         <>
                           <time dateTime={nextPendingDose.scheduledAt.toISOString()}>
-                            {format(nextPendingDose.scheduledAt, 'EEE d MMM, HH:mm', { locale: es })}
+                            {formatScheduleTime(nextPendingDose.scheduledAt, 'EEE d MMM')}
                           </time>
                           <strong>{nextPendingDose.medicationName}</strong>
                         </>
