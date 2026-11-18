@@ -28,7 +28,7 @@ import {
 } from 'lucide-react'
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { DoseCard } from './components/DoseCard'
+import { DoseListView, type DoseFilter } from './components/DoseListView'
 import { DoseTimePreview } from './components/DoseTimePreview'
 import { MobileNavigation, Sidebar } from './components/Navigation'
 import {
@@ -40,13 +40,14 @@ import {
   type PendingPlanChange,
 } from './components/PrescriptionReviewDialog'
 import { ScheduleSetup } from './components/ScheduleSetup'
+import { TodayScheduleView } from './components/TodayScheduleView'
+import { WeekScheduleView } from './components/WeekScheduleView'
 
 const recipeAnalysis = {
   patient: 'Amelia',
 }
 
 type ScheduleView = 'today' | 'list' | 'calendar'
-type DoseFilter = 'all' | DoseStatus
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
@@ -1060,143 +1061,42 @@ function App() {
                 </div>
 
                 {scheduleView === 'today' && (
-                  <section className="today-view" aria-label="Tomas de hoy">
-                    <div className="today-view-heading">
-                      <div>
-                        <p className="eyebrow">Agenda de hoy</p>
-                        <h4>{format(currentTime, 'EEEE d MMMM', { locale: es })}</h4>
-                      </div>
-                      <span>{todaysDoses.length} {todaysDoses.length === 1 ? 'toma' : 'tomas'}</span>
-                    </div>
-                    {todaysDoses.length > 0 ? (
-                      <div className="dose-list-view today-dose-list">
-                        {todaysDoses.map((dose) => (
-                          <DoseCard
-                            key={dose.id}
-                            dose={dose}
-                            isNextDose={dose.id === nextTodayDose?.id}
-                            onUpdateStatus={updateDoseStatus}
-                          />
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="today-empty-state">
-                        <Sun size={20} />
-                        <div>
-                          <strong>No hay tomas programadas para hoy</strong>
-                          <span>Consulta la semana para ver las próximas fechas del plan.</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="review-button"
-                          onClick={() => {
-                            setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
-                            setSelectedCalendarDay(currentTime)
-                            setScheduleView('calendar')
-                          }}
-                        >
-                          Ver semana
-                        </button>
-                      </div>
-                    )}
-                  </section>
+                  <TodayScheduleView
+                    currentTime={currentTime}
+                    doses={todaysDoses}
+                    nextDoseId={nextTodayDose?.id}
+                    onUpdateDoseStatus={updateDoseStatus}
+                    onViewWeek={() => {
+                      setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                      setSelectedCalendarDay(currentTime)
+                      setScheduleView('calendar')
+                    }}
+                  />
                 )}
 
                 {scheduleView === 'list' && (
-                  <>
-                    <div className="schedule-view-switch dose-filter-switch" role="group" aria-label="Filtrar tomas">
-                      {([
-                        ['all', 'Todas', scheduleEvents.length],
-                        ['pending', 'Por dar', statusCounts.pending],
-                        ['given', 'Administradas', statusCounts.given],
-                        ['skipped', 'Omitidas', statusCounts.skipped],
-                      ] as const).map(([filter, label, count]) => (
-                        <button
-                          type="button"
-                          className={doseFilter === filter ? 'is-active' : ''}
-                          aria-pressed={doseFilter === filter}
-                          onClick={() => setDoseFilter(filter)}
-                          key={filter}
-                        >
-                          {label} <small>{count}</small>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="dose-list-view">
-                      {filteredScheduleEvents.length > 0
-                        ? filteredScheduleEvents.map((dose) => (
-                            <DoseCard
-                              key={dose.id}
-                              dose={dose}
-                              onUpdateStatus={updateDoseStatus}
-                            />
-                          ))
-                        : <p className="dose-filter-empty">No hay tomas en este estado.</p>}
-                    </div>
-                  </>
+                  <DoseListView
+                    filter={doseFilter}
+                    doses={filteredScheduleEvents}
+                    statusCounts={statusCounts}
+                    onChangeFilter={setDoseFilter}
+                    onUpdateDoseStatus={updateDoseStatus}
+                  />
                 )}
                 {scheduleView === 'calendar' && (
-                  <>
-                    <div className="week-picker" role="group" aria-label="Seleccionar día de la semana">
-                      {calendarDays.map((day) => {
-                        const dayDoses = scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, day))
-                        const isSelected = isSameDay(day, selectedCalendarDay)
-                        const isToday = isSameDay(day, currentTime)
-                        return (
-                          <button
-                            type="button"
-                            className={`week-day-button${isSelected ? ' is-selected' : ''}${isToday ? ' is-today' : ''}`}
-                            aria-pressed={isSelected}
-                            aria-label={`${format(day, 'EEEE d MMMM', { locale: es })}, ${dayDoses.length} ${dayDoses.length === 1 ? 'toma' : 'tomas'}`}
-                            onClick={() => setSelectedCalendarDay(day)}
-                            key={day.toISOString()}
-                          >
-                            <span>{format(day, 'EEE', { locale: es })}</span>
-                            <strong>{format(day, 'd')}</strong>
-                            <small>{dayDoses.length === 0 ? 'Sin tomas' : `${dayDoses.length} ${dayDoses.length === 1 ? 'toma' : 'tomas'}`}</small>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    <section className="selected-day-agenda" aria-label={`Tomas de ${format(selectedCalendarDay, 'EEEE d MMMM', { locale: es })}`}>
-                      <div className="today-view-heading">
-                        <div>
-                          <p className="eyebrow">Agenda del día</p>
-                          <h4>{format(selectedCalendarDay, 'EEEE d MMMM', { locale: es })}</h4>
-                        </div>
-                        <span>{selectedDayDoses.length} {selectedDayDoses.length === 1 ? 'toma' : 'tomas'}</span>
-                      </div>
-                      {selectedDayDoses.length > 0 ? (
-                        <div className="dose-list-view">
-                          {selectedDayDoses.map((dose) => (
-                            <DoseCard
-                              key={dose.id}
-                              dose={dose}
-                              onUpdateStatus={updateDoseStatus}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="today-empty-state">
-                          <CalendarDays size={20} />
-                          <div>
-                            <strong>No hay tomas para este día</strong>
-                            <span>Elige otra fecha o vuelve a la semana actual.</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="review-button"
-                            onClick={() => {
-                              setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
-                              setSelectedCalendarDay(currentTime)
-                            }}
-                          >
-                            Ir a hoy
-                          </button>
-                        </div>
-                      )}
-                    </section>
-                  </>
+                  <WeekScheduleView
+                    days={calendarDays}
+                    events={scheduleEvents}
+                    currentTime={currentTime}
+                    selectedDay={selectedCalendarDay}
+                    selectedDayDoses={selectedDayDoses}
+                    onSelectDay={setSelectedCalendarDay}
+                    onUpdateDoseStatus={updateDoseStatus}
+                    onGoToToday={() => {
+                      setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                      setSelectedCalendarDay(currentTime)
+                    }}
+                  />
                 )}
                 <button type="button" className="export-json-button" onClick={downloadScheduleJson}>
                   Descargar respaldo JSON
