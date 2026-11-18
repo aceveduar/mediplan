@@ -20,9 +20,7 @@ import {
   FileText,
   List,
   Menu,
-  Sparkles,
   Sun,
-  Upload,
 } from 'lucide-react'
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -43,6 +41,7 @@ import {
 } from './components/ScheduleAdjustmentPanel'
 import { TodayScheduleView } from './components/TodayScheduleView'
 import { WeekScheduleView } from './components/WeekScheduleView'
+import { PrescriptionFileAttachment } from './components/PrescriptionFileAttachment'
 
 const recipeAnalysis = {
   patient: 'Amelia',
@@ -125,23 +124,13 @@ function App() {
   const [scheduleError, setScheduleError] = useState('')
   const [persistenceError, setPersistenceError] = useState(initialData.error)
   const [canPersist, setCanPersist] = useState(!initialData.error)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [fileError, setFileError] = useState('')
-  const [previewUrl, setPreviewUrl] = useState('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const reviewModalRef = useRef<HTMLElement>(null)
   const reviewCloseRef = useRef<HTMLButtonElement>(null)
   const focusReturnRef = useRef<HTMLElement | null>(null)
-  const selectedFileName = selectedFile?.name ?? ''
   const closePrescriptionReview = () => {
     setPendingPlanChange(null)
     setIsPrescriptionReviewOpen(false)
   }
-
-  useEffect(() => {
-    if (!previewUrl) return
-    return () => URL.revokeObjectURL(previewUrl)
-  }, [previewUrl])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setCurrentTime(new Date()), 60_000)
@@ -214,33 +203,6 @@ function App() {
     }
   }, [isPrescriptionReviewOpen, isScheduleSetupOpen])
 
-  const handleFileSelection = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    const acceptedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-    if (!acceptedTypes.includes(file.type)) {
-      setFileError('Selecciona una imagen JPG, PNG, WebP o un archivo PDF.')
-      setSelectedFile(null)
-      setPreviewUrl('')
-      event.target.value = ''
-      return
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      setFileError('El archivo supera el límite de 10 MB.')
-      setSelectedFile(null)
-      setPreviewUrl('')
-      event.target.value = ''
-      return
-    }
-
-    setFileError('')
-    setSelectedFile(file)
-    setPreviewUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
-  }
-
-  const openFilePicker = () => fileInputRef.current?.click()
   const openPrescriptionReview = () => {
     focusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setIsPrescriptionReviewOpen(true)
@@ -733,73 +695,7 @@ function App() {
         {persistenceError && <p className="file-error" role="alert">{persistenceError}</p>}
 
         <section className="hero-grid">
-          <div className="upload-card card-surface">
-            <div className="upload-header">
-              <div className="status-pill">
-                <Sparkles size={15} />
-                {selectedFileName ? 'Archivo de referencia' : 'Revisión de indicaciones'}
-              </div>
-              <span className="muted">
-                {selectedFileName ? 'Vista previa en este dispositivo' : 'Adjunto opcional'}
-              </span>
-            </div>
-
-            <div className="upload-body">
-              <button type="button" className="upload-box" onClick={openFilePicker}>
-                <Upload size={28} />
-                <strong>{selectedFileName ? 'Cambiar archivo' : 'Añadir foto o PDF (opcional)'}</strong>
-                <span>JPG, PNG, WebP o PDF · solo vista previa</span>
-              </button>
-              <input
-                ref={fileInputRef}
-                className="file-input"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                onChange={handleFileSelection}
-                aria-label="Seleccionar archivo de receta"
-              />
-
-              <div className="meta-list">
-                <div>
-                  <span className="label">Privacidad</span>
-                  <strong>Datos guardados en este dispositivo</strong>
-                </div>
-                <div>
-                  <span className="label">Archivo</span>
-                  <strong>{selectedFileName ? 'Vista previa temporal' : 'No necesitas adjuntarlo'}</strong>
-                </div>
-              </div>
-            </div>
-            {fileError && <p className="file-error" role="alert">{fileError}</p>}
-            {selectedFileName && (
-              <div className="selected-file-card" role="status">
-                {previewUrl ? (
-                  <img className="file-preview" src={previewUrl} alt={`Vista previa de ${selectedFileName}`} />
-                ) : (
-                  <div className="file-preview-placeholder"><FileText size={28} /></div>
-                )}
-                <div className="selected-file-details">
-                  <strong>{selectedFileName}</strong>
-                  <span>Vista previa en este navegador · no se procesa ni se guarda</span>
-                  <button
-                    type="button"
-                    className="remove-file-button"
-                    onClick={() => {
-                      setSelectedFile(null)
-                      setPreviewUrl('')
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                    }}
-                  >
-                    Quitar archivo
-                  </button>
-                </div>
-              </div>
-            )}
-            <p className="file-notice">
-              Adjuntar la receta es opcional. El archivo solo se previsualiza aquí; MediPlan no lo interpreta ni lo envía a internet.
-            </p>
-          </div>
-
+          <PrescriptionFileAttachment />
         </section>
 
         <section className="content-grid">
