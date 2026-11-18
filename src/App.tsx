@@ -1,16 +1,13 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import './App.css'
-import type { DoseStatus, PrescriptionEntry, ScheduledDose } from './domain/model'
+import type { PrescriptionEntry, ScheduledDose } from './domain/model'
 import {
   getDoseSeriesKey,
-  getScheduleRule,
-  getScheduledDoseTimes,
   getShiftedDoseTimes,
   formatScheduleTime,
-  hasValidDoseAmount,
   sortDosesForTracking,
 } from './domain/schedule'
-import { getInitialAppData, saveAppData, toStoredAppData } from './storage/appData'
+import { toStoredAppData } from './storage/appData'
 import {
   CalendarDays,
   ChevronLeft,
@@ -40,6 +37,7 @@ import { WeekScheduleView } from './components/WeekScheduleView'
 import { PrescriptionFileAttachment } from './components/PrescriptionFileAttachment'
 import { MainHeader } from './components/MainHeader'
 import { PlanStatusBanner } from './components/PlanStatusBanner'
+import { useMediPlan } from './hooks/useMediPlan'
 
 const recipeAnalysis = {
   patient: 'Amelia',
@@ -89,7 +87,23 @@ function toLocalDateTimeValue(date: Date) {
 }
 
 function App() {
-  const [initialData] = useState(getInitialAppData)
+  const {
+    prescriptionEntries,
+    confirmedItems,
+    firstDoseTimes,
+    scheduleEvents,
+    persistenceError,
+    scheduleReady,
+    scheduleBlockers,
+    applyConfirmationToggle,
+    applyDurationSelection,
+    prepareEntryEdit,
+    updatePrescriptionEntries,
+    updateFirstDoseTime,
+    updateDoseStatus,
+    createSchedule,
+    updateScheduleEvents,
+  } = useMediPlan()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
   )
@@ -99,15 +113,11 @@ function App() {
   )
   const [installError, setInstallError] = useState('')
   const [isPrescriptionReviewOpen, setIsPrescriptionReviewOpen] = useState(false)
-  const [prescriptionEntries, setPrescriptionEntries] = useState(initialData.prescriptionEntries)
-  const [confirmedItems, setConfirmedItems] = useState(initialData.confirmedItems)
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState(emptyPrescriptionEditValues)
   const [editError, setEditError] = useState('')
   const [pendingPlanChange, setPendingPlanChange] = useState<PendingPlanChange | null>(null)
   const [isScheduleSetupOpen, setIsScheduleSetupOpen] = useState(false)
-  const [firstDoseTimes, setFirstDoseTimes] = useState(initialData.firstDoseTimes)
-  const [scheduleEvents, setScheduleEvents] = useState<ScheduledDose[]>(initialData.scheduleEvents)
   const [scheduleView, setScheduleView] = useState<ScheduleView>('today')
   const [doseFilter, setDoseFilter] = useState<DoseFilter>('all')
   const [currentTime, setCurrentTime] = useState(() => new Date())
@@ -120,8 +130,6 @@ function App() {
   )
   const [selectedCalendarDay, setSelectedCalendarDay] = useState(() => currentTime)
   const [scheduleError, setScheduleError] = useState('')
-  const [persistenceError, setPersistenceError] = useState(initialData.error)
-  const [canPersist, setCanPersist] = useState(!initialData.error)
   const reviewModalRef = useRef<HTMLElement>(null)
   const reviewCloseRef = useRef<HTMLButtonElement>(null)
   const focusReturnRef = useRef<HTMLElement | null>(null)
@@ -205,37 +213,6 @@ function App() {
     focusReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setIsPrescriptionReviewOpen(true)
   }
-  const persistAppState = (changes: {
-    prescriptionEntries?: PrescriptionEntry[]
-    confirmedItems?: string[]
-    firstDoseTimes?: Record<string, string>
-    scheduleEvents?: ScheduledDose[]
-  } = {}) => {
-    if (!canPersist) return
-
-    try {
-      const savedData = toStoredAppData({
-        prescriptionEntries: changes.prescriptionEntries ?? prescriptionEntries,
-        confirmedItems: changes.confirmedItems ?? confirmedItems,
-        firstDoseTimes: changes.firstDoseTimes ?? firstDoseTimes,
-        scheduleEvents: changes.scheduleEvents ?? scheduleEvents,
-      })
-      saveAppData(savedData)
-      setPersistenceError('')
-    } catch (error) {
-      console.error('No se pudieron guardar los datos de MediPlan:', error)
-      setPersistenceError('No se pudieron guardar los cambios en este navegador.')
-      setCanPersist(false)
-    }
-  }
-  const applyConfirmationToggle = (id: string) => {
-    const nextConfirmedItems = confirmedItems.includes(id)
-      ? confirmedItems.filter((item) => item !== id)
-      : [...confirmedItems, id]
-    setScheduleEvents([])
-    setConfirmedItems(nextConfirmedItems)
-    persistAppState({ confirmedItems: nextConfirmedItems, scheduleEvents: [] })
-  }
   const toggleConfirmation = (id: string) => {
     if (scheduleEvents.length > 0) {
       setPendingPlanChange({ type: 'confirmation', entryId: id })
@@ -243,19 +220,6 @@ function App() {
     }
 
     applyConfirmationToggle(id)
-  }
-  const applyDurationSelection = (id: string, value: string) => {
-    const durationDays = value ? Number(value) : null
-    const nextEntries = prescriptionEntries.map((entry) => {
-      if (entry.id !== id) return entry
-      return {
-        ...entry,
-        schedule: { ...entry.schedule, durationDays },
-      }
-    })
-    setPrescriptionEntries(nextEntries)
-    setScheduleEvents([])
-    persistAppState({ prescriptionEntries: nextEntries, scheduleEvents: [] })
   }
   const updateDurationSelection = (id: string, value: string) => {
     if (scheduleEvents.length > 0) {
@@ -265,54 +229,11 @@ function App() {
 
     applyDurationSelection(id, value)
   }
-  const updateDoseStatus = (id: string, status: DoseStatus) => {
-    const nextEvents = scheduleEvents.map((dose) => (
-      dose.id === id
-        ? { ...dose, status, administeredAt: status === 'given' ? new Date() : null }
-        : dose
-    ))
-    setScheduleEvents(nextEvents)
-    persistAppState({ scheduleEvents: nextEvents })
-  }
-  const allItemsConfirmed = confirmedItems.length === prescriptionEntries.length
-  const scheduleReady = prescriptionEntries.every((entry) => {
-    const rule = getScheduleRule(entry.schedule)
-    return hasValidDoseAmount(entry.schedule)
-      && rule.intervalHours !== null
-      && rule.totalDoses !== null
-      && rule.totalDoses > 0
-      && Boolean(firstDoseTimes[entry.id])
-  })
-  const scheduleBlockers = prescriptionEntries.flatMap((entry) => {
-    const rule = getScheduleRule(entry.schedule)
-    if (!hasValidDoseAmount(entry.schedule)) {
-      return [`Completa la cantidad y unidad de ${entry.name} tal como aparecen en la receta.`]
-    }
-    if (rule.durationRange && rule.totalDoses === null) {
-      return [`Elige entre ${rule.durationRange.min} y ${rule.durationRange.max} días para ${entry.name}.`]
-    }
-    if (rule.intervalHours === null || rule.totalDoses === null || rule.totalDoses <= 0) {
-      return [`Completa el intervalo y la duración de ${entry.name} tal como aparecen en la receta.`]
-    }
-    return firstDoseTimes[entry.id]
-      ? []
-      : [`Elige cuándo será la primera toma de ${entry.name}.`]
-  })
   const applyEntryEdit = (entry: PrescriptionEntry) => {
-    const nextConfirmedItems = confirmedItems.filter((id) => id !== entry.id)
-    const nextFirstDoseTimes = { ...firstDoseTimes }
-    delete nextFirstDoseTimes[entry.id]
     setEditingEntryId(entry.id)
     setEditValues(getPrescriptionEditValues(entry))
     setEditError('')
-    setScheduleEvents([])
-    setFirstDoseTimes(nextFirstDoseTimes)
-    setConfirmedItems(nextConfirmedItems)
-    persistAppState({
-      confirmedItems: nextConfirmedItems,
-      firstDoseTimes: nextFirstDoseTimes,
-      scheduleEvents: [],
-    })
+    prepareEntryEdit(entry.id)
   }
   const beginEditing = (entry: PrescriptionEntry) => {
     if (scheduleEvents.length > 0) {
@@ -393,53 +314,29 @@ function App() {
           }
         : entry,
     )
-    setPrescriptionEntries(nextEntries)
-    persistAppState({ prescriptionEntries: nextEntries })
+    updatePrescriptionEntries(nextEntries)
     setEditingEntryId(null)
     setEditError('')
   }
   const generateSchedule = (replaceActivePlan = false) => {
-    if (!allItemsConfirmed || !scheduleReady) {
+    const result = createSchedule(replaceActivePlan)
+    if (result.type === 'incomplete') {
       setScheduleError('Revisa todas las indicaciones y completa la primera toma de cada medicamento.')
       return
     }
-
-    if (scheduleEvents.length > 0 && !replaceActivePlan) {
+    if (result.type === 'confirmation-required') {
       setPendingPlanChange({ type: 'regenerate' })
       return
     }
-
-    const generated: ScheduledDose[] = []
-    for (const entry of prescriptionEntries) {
-      const rule = getScheduleRule(entry.schedule)
-      const firstDose = new Date(firstDoseTimes[entry.id])
-      if (
-        rule.intervalHours === null
-        || rule.totalDoses === null
-        || Number.isNaN(firstDose.getTime())
-      ) {
-        setScheduleError(`No se puede programar ${entry.name}. Revisa la frecuencia, duración y hora inicial.`)
-        return
-      }
-
-      const scheduledTimes = getScheduledDoseTimes(firstDose, rule.intervalHours, rule.totalDoses)
-      for (let doseIndex = 0; doseIndex < scheduledTimes.length; doseIndex += 1) {
-        generated.push({
-          id: `${entry.id}-${doseIndex}`,
-          medicationName: entry.name,
-          instructions: entry.detail,
-          scheduledAt: scheduledTimes[doseIndex],
-          administeredAt: null,
-          status: 'pending',
-        })
-      }
+    if (result.type === 'invalid') {
+      setScheduleError(result.medicationName
+        ? `No se puede programar ${result.medicationName}. Revisa la frecuencia, duración y hora inicial.`
+        : 'No hay indicaciones para generar el calendario.')
+      return
     }
 
-    generated.sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
-    setScheduleEvents(generated)
-    setVisibleWeekStart(startOfWeek(generated[0].scheduledAt, { weekStartsOn: 1 }))
-    setSelectedCalendarDay(generated[0].scheduledAt)
-    persistAppState({ scheduleEvents: generated })
+    setVisibleWeekStart(startOfWeek(result.firstDoseAt, { weekStartsOn: 1 }))
+    setSelectedCalendarDay(result.firstDoseAt)
     setScheduleError('')
     setIsScheduleSetupOpen(false)
     closePrescriptionReview()
@@ -579,8 +476,7 @@ function App() {
         return scheduledAt ? { ...dose, scheduledAt } : dose
       })
       .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
-    setScheduleEvents(nextEvents)
-    persistAppState({ scheduleEvents: nextEvents })
+    updateScheduleEvents(nextEvents)
     setIsScheduleAdjustmentOpen(false)
     setScheduleAdjustmentTimes({})
     setScheduleAdjustmentConfirmed(false)
@@ -909,9 +805,7 @@ function App() {
                   setScheduleError('')
                 }}
                 onFirstDoseTimeChange={(entryId, value) => {
-                  const nextTimes = { ...firstDoseTimes, [entryId]: value }
-                  setFirstDoseTimes(nextTimes)
-                  persistAppState({ firstDoseTimes: nextTimes })
+                  updateFirstDoseTime(entryId, value)
                   setScheduleError('')
                 }}
                 onCorrectEntry={(entry) => {
