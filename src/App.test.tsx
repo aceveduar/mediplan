@@ -178,4 +178,26 @@ describe('MediPlan medication flow', () => {
     expect(backup.version).toBe(2)
     expect(backup.scheduleEvents.length).toBeGreaterThan(0)
   })
+
+  it('downloads a backup before a schedule has been created', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const createObjectUrl = vi.fn((_blob: Blob) => 'blob:mediplan-backup')
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectUrl,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Descargar respaldo JSON' }))
+
+    const backup = JSON.parse(await createObjectUrl.mock.calls[0][0].text())
+    expect(backup.version).toBe(2)
+    expect(backup.prescriptionEntries).toHaveLength(initialPrescriptionEntries.length)
+    expect(backup.scheduleEvents).toHaveLength(0)
+  })
 })

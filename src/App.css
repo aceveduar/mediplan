@@ -25,6 +25,12 @@
   cursor: pointer;
 }
 
+.export-json-actions {
+  display: grid;
+  justify-items: start;
+  margin-top: 18px;
+}
+
 .export-json-button:hover {
   background: #f8fafc;
 }

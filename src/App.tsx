@@ -605,9 +605,6 @@ function App() {
                     }}
                   />
                 )}
-                <button type="button" className="export-json-button" onClick={downloadScheduleJson}>
-                  Descargar respaldo JSON
-                </button>
               </div>
             ) : (
               <div className="calendar-empty">
@@ -622,6 +619,11 @@ function App() {
                 </ol>
               </div>
             )}
+            <div className="export-json-actions">
+              <button type="button" className="export-json-button" onClick={downloadScheduleJson}>
+                Descargar respaldo JSON
+              </button>
+            </div>
           </div>
         </section>
       </main>
