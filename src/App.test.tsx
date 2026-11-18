@@ -13,7 +13,11 @@ function toLocalDateTimeValue(date: Date) {
 function getStoredScheduleEvents() {
   const saved = window.localStorage.getItem('mediplan:amelia:v2')
   if (!saved) throw new Error('No se guardó el calendario de MediPlan.')
-  return JSON.parse(saved).scheduleEvents as Array<{ id: string; status: string }>
+  return JSON.parse(saved).scheduleEvents as Array<{
+    id: string
+    status: string
+    scheduledAt: string
+  }>
 }
 
 async function createActiveSchedule(user: ReturnType<typeof userEvent.setup>) {
@@ -86,5 +90,92 @@ describe('MediPlan medication flow', () => {
 
     expect(getStoredScheduleEvents()).toEqual(eventsBeforeReview)
     expect(screen.getByText('Plan activo')).toBeTruthy()
+  })
+
+  it('requires prescription review again after saving a correction', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await createActiveSchedule(user)
+
+    await user.click(screen.getByRole('button', { name: 'Revisar el plan' }))
+    await user.click(screen.getAllByRole('button', { name: 'Editar' })[0])
+    await user.click(screen.getByRole('button', { name: 'Eliminarlo y continuar' }))
+    await user.click(screen.getByRole('button', { name: 'Guardar corrección' }))
+
+    expect(screen.getAllByRole('button', { name: 'Coincide' })).toHaveLength(1)
+    expect(getStoredScheduleEvents()).toHaveLength(0)
+    const saved = JSON.parse(window.localStorage.getItem('mediplan:amelia:v2') ?? '{}')
+    expect(saved.confirmedItems).not.toContain('combination-medicine')
+  })
+
+  it('moves future doses only after professional confirmation and preserves recorded doses', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await createActiveSchedule(user)
+
+    const medicationName = initialPrescriptionEntries[0].name
+    await user.click(screen.getAllByRole('button', {
+      name: `Marcar ${medicationName} como administrada`,
+    })[0])
+    const eventsBeforeAdjustment = getStoredScheduleEvents()
+    const recordedDoseBefore = eventsBeforeAdjustment
+      .find((dose) => dose.id === 'combination-medicine-0')
+    if (!recordedDoseBefore) throw new Error('No se guardó la toma registrada.')
+
+    await user.click(screen.getByRole('button', { name: 'Ajustar tomas futuras' }))
+    fireEvent.change(screen.getAllByLabelText('Nuevo horario de la próxima toma')[0], {
+      target: { value: toLocalDateTimeValue(new Date(Date.now() + 24 * 60 * 60_000)) },
+    })
+    await user.click(screen.getByLabelText(
+      'Confirmo que este horario alternativo fue indicado por un profesional de salud.',
+    ))
+    await user.click(screen.getByRole('button', { name: 'Aplicar horario autorizado' }))
+
+    const updatedEvents = getStoredScheduleEvents()
+    expect(updatedEvents.find((dose) => dose.id === recordedDoseBefore.id)).toEqual(recordedDoseBefore)
+    expect(updatedEvents.some((dose) => (
+      dose.status === 'pending'
+      && dose.scheduledAt !== eventsBeforeAdjustment.find((previous) => previous.id === dose.id)?.scheduledAt
+    ))).toBe(true)
+  })
+
+  it('shows a persistence error when local storage rejects a change', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage full', 'QuotaExceededError')
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Revisar indicaciones' }))
+    await user.click(screen.getAllByRole('button', { name: 'Coincide' })[0])
+
+    expect(screen.getByText('No se pudieron guardar los cambios en este navegador.')).toBeTruthy()
+  })
+
+  it('downloads a versioned JSON backup of the active schedule', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await createActiveSchedule(user)
+
+    const createObjectUrl = vi.fn((_blob: Blob) => 'blob:mediplan-backup')
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectUrl,
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: vi.fn(),
+    })
+    const clickAnchor = vi.spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        expect(this.download).toBe('mediplan-amelia.json')
+      })
+
+    await user.click(screen.getByRole('button', { name: 'Descargar respaldo JSON' }))
+
+    expect(clickAnchor).toHaveBeenCalledOnce()
+    const backup = JSON.parse(await createObjectUrl.mock.calls[0][0].text())
+    expect(backup.version).toBe(2)
+    expect(backup.scheduleEvents.length).toBeGreaterThan(0)
   })
 })
