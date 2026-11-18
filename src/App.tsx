@@ -3,7 +3,6 @@ import './App.css'
 import type { DoseStatus, PrescriptionEntry, ScheduledDose } from './domain/model'
 import {
   getDoseSeriesKey,
-  getDoseTimePreview,
   getScheduleRule,
   getScheduledDoseTimes,
   getShiftedDoseTimes,
@@ -13,7 +12,6 @@ import {
 } from './domain/schedule'
 import { getInitialAppData, saveAppData, toStoredAppData } from './storage/appData'
 import {
-  AlertTriangle,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -29,7 +27,6 @@ import {
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { DoseListView, type DoseFilter } from './components/DoseListView'
-import { DoseTimePreview } from './components/DoseTimePreview'
 import { MobileNavigation, Sidebar } from './components/Navigation'
 import {
   type PrescriptionEditValues,
@@ -40,6 +37,10 @@ import {
   type PendingPlanChange,
 } from './components/PrescriptionReviewDialog'
 import { ScheduleSetup } from './components/ScheduleSetup'
+import {
+  ScheduleAdjustmentPanel,
+  type AdjustableDoseSeries,
+} from './components/ScheduleAdjustmentPanel'
 import { TodayScheduleView } from './components/TodayScheduleView'
 import { WeekScheduleView } from './components/WeekScheduleView'
 
@@ -51,14 +52,6 @@ type ScheduleView = 'today' | 'list' | 'calendar'
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
-}
-
-type AdjustableDoseSeries = {
-  key: string
-  medicationName: string
-  instructions: string
-  doses: ScheduledDose[]
-  lockedCount: number
 }
 
 const emptyPrescriptionEditValues: PrescriptionEditValues = {
@@ -840,113 +833,23 @@ function App() {
             </div>
 
             {scheduleEvents.length > 0 && isScheduleAdjustmentOpen && (
-              <section
-                className="schedule-adjustment-panel"
-                id="schedule-adjustment-panel"
-                aria-labelledby="schedule-adjustment-title"
-              >
-                <div className="schedule-adjustment-heading">
-                  <div>
-                    <p className="eyebrow">Solo pendientes futuras</p>
-                    <h4 id="schedule-adjustment-title">Ajustar el horario de un medicamento</h4>
-                    <p>Elige una nueva hora para la próxima toma pendiente. Las demás tomas futuras de ese medicamento se desplazarán lo mismo para conservar el intervalo actual.</p>
-                  </div>
-                </div>
-
-                <div className="schedule-adjustment-list">
-                  {adjustableDoseGroups.map((series, index) => {
-                    const medication = prescriptionEntries.find((entry) =>
-                      series.doses[0].id.startsWith(`${entry.id}-`),
-                    )
-                    const intervalHours = medication?.schedule.intervalHours ?? null
-                    const selectedTime = scheduleAdjustmentTimes[series.key]
-                    const previewStart = selectedTime ? new Date(selectedTime) : null
-                    const previewTimes = previewStart && Number.isFinite(previewStart.getTime())
-                      ? getShiftedDoseTimes(series.doses, previewStart)
-                      : []
-                    return (
-                      <div className="schedule-adjustment-item" key={series.key}>
-                        <div>
-                          <strong>{series.medicationName}</strong>
-                          <span>
-                            Próxima: {formatScheduleTime(series.doses[0].scheduledAt, 'EEE d MMM')}
-                            {' · '}{series.doses.length} {series.doses.length === 1 ? 'pendiente' : 'pendientes'}
-                            {intervalHours ? ` · cada ${intervalHours} h` : ''}
-                          </span>
-                          {series.lockedCount > 0 && (
-                            <span className="schedule-adjustment-locked">
-                              Tiene {series.lockedCount} {series.lockedCount === 1 ? 'toma posterior ya registrada' : 'tomas posteriores ya registradas'}; no se ajustará automáticamente.
-                            </span>
-                          )}
-                        </div>
-                        <label htmlFor={`adjustment-time-${index}`}>
-                          Nuevo horario de la próxima toma
-                          <input
-                            id={`adjustment-time-${index}`}
-                            type="datetime-local"
-                            value={scheduleAdjustmentTimes[series.key] ?? ''}
-                            disabled={series.lockedCount > 0}
-                            onChange={(event) => {
-                              setScheduleAdjustmentTimes((times) => ({
-                                ...times,
-                                [series.key]: event.target.value,
-                              }))
-                              setScheduleAdjustmentError('')
-                            }}
-                          />
-                        </label>
-                        <DoseTimePreview
-                          preview={getDoseTimePreview(previewTimes)}
-                          title="Así quedarían las próximas tomas"
-                        />
-                      </div>
-                    )
-                  })}
-                </div>
-
-                <p className="schedule-adjustment-notice">
-                  <AlertTriangle size={17} />
-                  <span>
-                    Úsalo solo si el médico o farmacéutico indicó un horario alternativo. Las tomas administradas, omitidas o con hora ya pasada no cambian; una toma atrasada no se reprograma automáticamente.
-                  </span>
-                </p>
-
-                <label className="schedule-adjustment-confirm">
-                  <input
-                    type="checkbox"
-                    checked={scheduleAdjustmentConfirmed}
-                    onChange={(event) => {
-                      setScheduleAdjustmentConfirmed(event.target.checked)
-                      setScheduleAdjustmentError('')
-                    }}
-                  />
-                  Confirmo que este horario alternativo fue indicado por un profesional de salud.
-                </label>
-
-                {scheduleAdjustmentError && (
-                  <p className="file-error" role="alert">{scheduleAdjustmentError}</p>
-                )}
-                <div className="schedule-adjustment-actions">
-                  <button
-                    type="button"
-                    className="cancel-edit-button"
-                    onClick={() => setIsScheduleAdjustmentOpen(false)}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    className="save-edit-button"
-                    disabled={
-                      !scheduleAdjustmentConfirmed
-                      || !adjustableDoseGroups.some((series) => series.lockedCount === 0)
-                    }
-                    onClick={saveScheduleAdjustment}
-                  >
-                    Aplicar horario autorizado
-                  </button>
-                </div>
-              </section>
+              <ScheduleAdjustmentPanel
+                series={adjustableDoseGroups}
+                prescriptionEntries={prescriptionEntries}
+                adjustmentTimes={scheduleAdjustmentTimes}
+                confirmed={scheduleAdjustmentConfirmed}
+                error={scheduleAdjustmentError}
+                onChangeTime={(key, value) => {
+                  setScheduleAdjustmentTimes((times) => ({ ...times, [key]: value }))
+                  setScheduleAdjustmentError('')
+                }}
+                onConfirmChange={(confirmed) => {
+                  setScheduleAdjustmentConfirmed(confirmed)
+                  setScheduleAdjustmentError('')
+                }}
+                onCancel={() => setIsScheduleAdjustmentOpen(false)}
+                onApply={saveScheduleAdjustment}
+              />
             )}
 
             {scheduleEvents.length > 0 ? (
