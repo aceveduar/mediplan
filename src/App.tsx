@@ -100,6 +100,69 @@ function formatScheduleTime(date: Date, datePattern?: string) {
   return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
 }
 
+const nightWindowLabel = '10:00 PM–6:00 AM'
+
+function isNightTime(date: Date) {
+  const hour = date.getHours()
+  return hour >= 22 || hour < 6
+}
+
+function getScheduledDoseTimes(firstDose: Date, intervalHours: number, totalDoses: number) {
+  return Array.from(
+    { length: totalDoses },
+    (_, index) => new Date(firstDose.getTime() + index * intervalHours * 60 * 60 * 1000),
+  )
+}
+
+function getShiftedDoseTimes(doses: ScheduledDose[], newFirstDose: Date) {
+  const originalFirstDose = doses[0].scheduledAt.getTime()
+  const offset = newFirstDose.getTime() - originalFirstDose
+  return doses.map((dose) => new Date(dose.scheduledAt.getTime() + offset))
+}
+
+function getDoseTimePreview(times: Date[]) {
+  const visibleTimes = times.slice(0, 4)
+  return {
+    times: visibleTimes,
+    remainingCount: times.length - visibleTimes.length,
+    nightCount: times.filter(isNightTime).length,
+  }
+}
+
+type DoseTimePreviewData = ReturnType<typeof getDoseTimePreview>
+
+function DoseTimePreview({ preview, title }: { preview: DoseTimePreviewData; title: string }) {
+  if (preview.times.length === 0) return null
+
+  return (
+    <div className="dose-time-preview" aria-live="polite">
+      <strong>{title}</strong>
+      <ul className="dose-time-preview-list">
+        {preview.times.map((time, index) => (
+          <li className={isNightTime(time) ? 'is-night' : ''} key={`${time.toISOString()}-${index}`}>
+            <time dateTime={time.toISOString()}>{formatScheduleTime(time, 'EEE d MMM')}</time>
+            {isNightTime(time) && <span>Horario nocturno</span>}
+          </li>
+        ))}
+      </ul>
+      {preview.remainingCount > 0 && (
+        <p className="dose-time-preview-remaining">
+          Y {preview.remainingCount} {preview.remainingCount === 1 ? 'toma más' : 'tomas más'} según el mismo intervalo.
+        </p>
+      )}
+      {preview.nightCount > 0 && (
+        <p className="dose-time-preview-warning">
+          <AlertTriangle size={16} />
+          <span>
+            {preview.nightCount} {preview.nightCount === 1 ? 'toma cae' : 'tomas caen'} entre {nightWindowLabel}.
+            {' '}La vista previa respeta el intervalo indicado; consulta a un médico o farmacéutico antes de cambiarlo.
+          </span>
+        </p>
+      )}
+    </div>
+  )
+}
+
 const initialPrescriptionEntries: PrescriptionEntry[] = [
   {
     id: 'combination-medicine',
@@ -613,12 +676,13 @@ function App() {
         return
       }
 
-      for (let doseIndex = 0; doseIndex < rule.totalDoses; doseIndex += 1) {
+      const scheduledTimes = getScheduledDoseTimes(firstDose, rule.intervalHours, rule.totalDoses)
+      for (let doseIndex = 0; doseIndex < scheduledTimes.length; doseIndex += 1) {
         generated.push({
           id: `${entry.id}-${doseIndex}`,
           medicationName: entry.name,
           instructions: entry.detail,
-          scheduledAt: new Date(firstDose.getTime() + doseIndex * rule.intervalHours * 60 * 60 * 1000),
+          scheduledAt: scheduledTimes[doseIndex],
           administeredAt: null,
           status: 'pending',
         })
@@ -755,8 +819,9 @@ function App() {
       if (offset === 0) continue
       hasChanges = true
 
-      for (const dose of series.doses) {
-        const scheduledAt = new Date(dose.scheduledAt.getTime() + offset)
+      const shiftedTimes = getShiftedDoseTimes(series.doses, newFirstDose)
+      for (const [index, dose] of series.doses.entries()) {
+        const scheduledAt = shiftedTimes[index]
         if (scheduledAt.getTime() <= now) {
           setScheduleAdjustmentError(`El nuevo horario de ${series.medicationName} deja una toma en el pasado.`)
           return
@@ -1122,6 +1187,11 @@ function App() {
                 <div className="schedule-adjustment-list">
                   {adjustableDoseGroups.map((series, index) => {
                     const intervalHours = getScheduleRule(series.instructions).intervalHours
+                    const selectedTime = scheduleAdjustmentTimes[series.key]
+                    const previewStart = selectedTime ? new Date(selectedTime) : null
+                    const previewTimes = previewStart && Number.isFinite(previewStart.getTime())
+                      ? getShiftedDoseTimes(series.doses, previewStart)
+                      : []
                     return (
                       <div className="schedule-adjustment-item" key={series.key}>
                         <div>
@@ -1153,6 +1223,10 @@ function App() {
                             }}
                           />
                         </label>
+                        <DoseTimePreview
+                          preview={getDoseTimePreview(previewTimes)}
+                          title="Así quedarían las próximas tomas"
+                        />
                       </div>
                     )
                   })}
@@ -1693,6 +1767,16 @@ function App() {
                   const ruleIsValid = rule.intervalHours !== null
                     && rule.totalDoses !== null
                     && rule.totalDoses > 0
+                  const firstDoseTime = firstDoseTimes[item.id]
+                    ? new Date(firstDoseTimes[item.id])
+                    : null
+                  const previewTimes = rule.intervalHours !== null
+                    && rule.totalDoses !== null
+                    && rule.totalDoses > 0
+                    && firstDoseTime
+                    && Number.isFinite(firstDoseTime.getTime())
+                    ? getScheduledDoseTimes(firstDoseTime, rule.intervalHours, rule.totalDoses)
+                    : []
 
                   return (
                     <article className="schedule-setup-item" key={item.id}>
@@ -1762,6 +1846,10 @@ function App() {
                           </button>
                         </div>
                       )}
+                      <DoseTimePreview
+                        preview={getDoseTimePreview(previewTimes)}
+                        title="Así quedarían las próximas tomas"
+                      />
                     </article>
                   )
                 })}

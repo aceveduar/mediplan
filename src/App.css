@@ -3881,3 +3881,76 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 }
+
+.dose-time-preview {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.dose-time-preview > strong {
+  color: var(--color-ink);
+  font-size: 0.82rem;
+}
+
+.dose-time-preview-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dose-time-preview-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-text);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.dose-time-preview-list li.is-night {
+  border-color: #efcf97;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.dose-time-preview-list li > span {
+  font-size: 0.68rem;
+}
+
+.dose-time-preview-remaining {
+  color: var(--color-muted);
+  font-size: 0.76rem;
+}
+
+.dose-time-preview-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid #efcf97;
+  border-radius: 10px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.dose-time-preview-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
