@@ -11,7 +11,6 @@ import {
   List,
   Menu,
   Pill,
-  ShieldCheck,
   Sparkles,
   Sun,
   Upload,
@@ -866,8 +865,8 @@ function App() {
         <nav className="nav-menu" aria-label="Navegación principal">
           <button
             type="button"
-            className={`nav-item ${scheduleView === 'today' ? 'active' : ''}`}
-            aria-current={scheduleView === 'today' ? 'page' : undefined}
+            className={`nav-item ${scheduleView !== 'list' ? 'active' : ''}`}
+            aria-current={scheduleView !== 'list' ? 'page' : undefined}
             aria-label="Calendario"
             title={isSidebarCollapsed ? 'Calendario' : undefined}
             onClick={() => {
@@ -880,8 +879,10 @@ function App() {
           </button>
           <button
             type="button"
-            className="nav-item"
+            className={`nav-item ${isPrescriptionReviewOpen ? 'active' : ''}`}
             aria-label="Recetas"
+            aria-haspopup="dialog"
+            aria-expanded={isPrescriptionReviewOpen}
             title={isSidebarCollapsed ? 'Recetas' : undefined}
             onClick={openPrescriptionReview}
           >
@@ -891,16 +892,17 @@ function App() {
           {scheduleEvents.length > 0 && (
             <button
               type="button"
-              className="nav-item"
-              aria-label="Seguimiento"
-              title={isSidebarCollapsed ? 'Seguimiento' : undefined}
+              className={`nav-item ${scheduleView === 'list' ? 'active' : ''}`}
+              aria-current={scheduleView === 'list' ? 'page' : undefined}
+              aria-label="Lista"
+              title={isSidebarCollapsed ? 'Lista' : undefined}
               onClick={() => {
                 setScheduleView('list')
                 document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
               }}
             >
-              <ShieldCheck size={18} />
-              <span className="nav-label">Seguimiento</span>
+              <List size={18} />
+              <span className="nav-label">Lista</span>
             </button>
           )}
         </nav>
@@ -1473,11 +1475,12 @@ function App() {
         <button
           type="button"
           className={`mobile-nav-item ${isPrescriptionReviewOpen ? 'is-active' : ''}`}
-          aria-current={isPrescriptionReviewOpen ? 'page' : undefined}
+          aria-haspopup="dialog"
+          aria-expanded={isPrescriptionReviewOpen}
           onClick={openPrescriptionReview}
         >
           <FileText size={20} />
-          <span>Receta</span>
+          <span>Recetas</span>
         </button>
         {scheduleEvents.length > 0 && (
           <button
@@ -1490,12 +1493,12 @@ function App() {
             }}
           >
             <List size={20} />
-            <span>Listado</span>
+            <span>Lista</span>
           </button>
         )}
         <button
           type="button"
-          className={`mobile-nav-item ${!isSidebarCollapsed ? 'is-active' : ''}`}
+          className={`mobile-nav-item ${!isSidebarCollapsed ? 'is-menu-open' : ''}`}
           aria-expanded={!isSidebarCollapsed}
           onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
         >
