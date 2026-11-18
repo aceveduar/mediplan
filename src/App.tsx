@@ -35,6 +35,11 @@ type PrescriptionEntry = {
 type DoseStatus = 'pending' | 'given' | 'skipped'
 type ScheduleView = 'today' | 'list' | 'calendar'
 type DoseFilter = 'all' | DoseStatus
+type PendingPlanChange =
+  | { type: 'edit'; entry: PrescriptionEntry }
+  | { type: 'confirmation'; entryId: string }
+  | { type: 'duration'; entryId: string; value: string }
+  | { type: 'regenerate' }
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
@@ -78,6 +83,13 @@ type InitialAppData = Omit<StoredAppData, 'scheduleEvents'> & {
 
 function getDoseSeriesKey(dose: Pick<ScheduledDose, 'medicationName' | 'instructions'>) {
   return JSON.stringify([dose.medicationName, dose.instructions])
+}
+
+function sortDosesForTracking(doses: ScheduledDose[]) {
+  return [...doses].sort((left, right) => {
+    const statusOrder = Number(left.status !== 'pending') - Number(right.status !== 'pending')
+    return statusOrder || left.scheduledAt.getTime() - right.scheduledAt.getTime()
+  })
 }
 
 function toLocalDateTimeValue(date: Date) {
@@ -292,6 +304,7 @@ function App() {
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
   const [editValues, setEditValues] = useState({ name: '', detail: '' })
   const [editError, setEditError] = useState('')
+  const [pendingPlanChange, setPendingPlanChange] = useState<PendingPlanChange | null>(null)
   const [isScheduleSetupOpen, setIsScheduleSetupOpen] = useState(false)
   const [firstDoseTimes, setFirstDoseTimes] = useState(initialData.firstDoseTimes)
   const [scheduleEvents, setScheduleEvents] = useState<ScheduledDose[]>(initialData.scheduleEvents)
@@ -317,6 +330,10 @@ function App() {
   const reviewCloseRef = useRef<HTMLButtonElement>(null)
   const focusReturnRef = useRef<HTMLElement | null>(null)
   const selectedFileName = selectedFile?.name ?? ''
+  const closePrescriptionReview = () => {
+    setPendingPlanChange(null)
+    setIsPrescriptionReviewOpen(false)
+  }
 
   useEffect(() => {
     if (!previewUrl) return
@@ -366,7 +383,7 @@ function App() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsPrescriptionReviewOpen(false)
+        closePrescriptionReview()
         return
       }
 
@@ -456,7 +473,7 @@ function App() {
       setCanPersist(false)
     }
   }
-  const toggleConfirmation = (id: string) => {
+  const applyConfirmationToggle = (id: string) => {
     const nextConfirmedItems = confirmedItems.includes(id)
       ? confirmedItems.filter((item) => item !== id)
       : [...confirmedItems, id]
@@ -464,7 +481,15 @@ function App() {
     setConfirmedItems(nextConfirmedItems)
     persistAppState({ confirmedItems: nextConfirmedItems, scheduleEvents: [] })
   }
-  const updateDurationSelection = (id: string, value: string) => {
+  const toggleConfirmation = (id: string) => {
+    if (scheduleEvents.length > 0) {
+      setPendingPlanChange({ type: 'confirmation', entryId: id })
+      return
+    }
+
+    applyConfirmationToggle(id)
+  }
+  const applyDurationSelection = (id: string, value: string) => {
     const durationDays = value ? Number(value) : undefined
     const nextEntries = prescriptionEntries.map((entry) => {
       if (entry.id !== id) return entry
@@ -476,6 +501,14 @@ function App() {
     setPrescriptionEntries(nextEntries)
     setScheduleEvents([])
     persistAppState({ prescriptionEntries: nextEntries, scheduleEvents: [] })
+  }
+  const updateDurationSelection = (id: string, value: string) => {
+    if (scheduleEvents.length > 0) {
+      setPendingPlanChange({ type: 'duration', entryId: id, value })
+      return
+    }
+
+    applyDurationSelection(id, value)
   }
   const updateDoseStatus = (id: string, status: DoseStatus) => {
     const nextEvents = scheduleEvents.map((dose) => (
@@ -506,7 +539,7 @@ function App() {
       ? []
       : [`Elige cuándo será la primera toma de ${entry.name}.`]
   })
-  const beginEditing = (entry: PrescriptionEntry) => {
+  const applyEntryEdit = (entry: PrescriptionEntry) => {
     const nextConfirmedItems = confirmedItems.filter((id) => id !== entry.id)
     const nextFirstDoseTimes = { ...firstDoseTimes }
     delete nextFirstDoseTimes[entry.id]
@@ -521,6 +554,14 @@ function App() {
       firstDoseTimes: nextFirstDoseTimes,
       scheduleEvents: [],
     })
+  }
+  const beginEditing = (entry: PrescriptionEntry) => {
+    if (scheduleEvents.length > 0) {
+      setPendingPlanChange({ type: 'edit', entry })
+      return
+    }
+
+    applyEntryEdit(entry)
   }
   const saveCorrection = (event: ChangeEvent<HTMLFormElement>, entryId: string) => {
     event.preventDefault()
@@ -544,9 +585,14 @@ function App() {
     setEditingEntryId(null)
     setEditError('')
   }
-  const generateSchedule = () => {
+  const generateSchedule = (replaceActivePlan = false) => {
     if (!allItemsConfirmed || !scheduleReady) {
       setScheduleError('Revisa todas las indicaciones y completa la primera toma de cada medicamento.')
+      return
+    }
+
+    if (scheduleEvents.length > 0 && !replaceActivePlan) {
+      setPendingPlanChange({ type: 'regenerate' })
       return
     }
 
@@ -582,7 +628,17 @@ function App() {
     persistAppState({ scheduleEvents: generated })
     setScheduleError('')
     setIsScheduleSetupOpen(false)
-    setIsPrescriptionReviewOpen(false)
+    closePrescriptionReview()
+  }
+  const confirmPendingPlanChange = () => {
+    if (!pendingPlanChange) return
+
+    const change = pendingPlanChange
+    setPendingPlanChange(null)
+    if (change.type === 'edit') applyEntryEdit(change.entry)
+    else if (change.type === 'confirmation') applyConfirmationToggle(change.entryId)
+    else if (change.type === 'duration') applyDurationSelection(change.entryId, change.value)
+    else generateSchedule(true)
   }
   const downloadScheduleJson = () => {
     const savedData: StoredAppData = {
@@ -609,12 +665,12 @@ function App() {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0)
   }
   const calendarDays = Array.from({ length: 7 }, (_, index) => addDays(visibleWeekStart, index))
-  const selectedDayDoses = scheduleEvents
-    .filter((dose) => isSameDay(dose.scheduledAt, selectedCalendarDay))
-    .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
-  const todaysDoses = scheduleEvents
-    .filter((dose) => isSameDay(dose.scheduledAt, currentTime))
-    .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
+  const selectedDayDoses = sortDosesForTracking(
+    scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, selectedCalendarDay)),
+  )
+  const todaysDoses = sortDosesForTracking(
+    scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, currentTime)),
+  )
   const todaysPendingCount = todaysDoses.filter((dose) => dose.status === 'pending').length
   const todaysGivenCount = todaysDoses.filter((dose) => dose.status === 'given').length
   const todaysSkippedCount = todaysDoses.filter((dose) => dose.status === 'skipped').length
@@ -651,12 +707,15 @@ function App() {
       }
     },
   )
+  const canAdjustSchedule = adjustableDoseGroups.some((series) => series.lockedCount === 0)
   const nextPendingDose = scheduleEvents
     .filter((dose) => dose.status === 'pending')
     .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())[0]
-  const filteredScheduleEvents = doseFilter === 'all'
-    ? scheduleEvents
-    : scheduleEvents.filter((dose) => dose.status === doseFilter)
+  const filteredScheduleEvents = sortDosesForTracking(
+    doseFilter === 'all'
+      ? scheduleEvents
+      : scheduleEvents.filter((dose) => dose.status === doseFilter),
+  )
   const openScheduleAdjustment = () => {
     setScheduleAdjustmentError('')
     setScheduleAdjustmentConfirmed(false)
@@ -908,7 +967,12 @@ function App() {
             <CheckCircle2 size={20} />
             <div className="plan-status-copy">
               <strong>Plan activo</strong>
-              <span>{scheduleEvents.length} tomas en el calendario · {statusCounts.pending} por dar · {statusCounts.given} administradas · {statusCounts.skipped} omitidas</span>
+              <span>
+                {scheduleEvents.length} {scheduleEvents.length === 1 ? 'toma' : 'tomas'} en el calendario
+                {' · '}{statusCounts.pending} por dar
+                {' · '}{statusCounts.given} {statusCounts.given === 1 ? 'administrada' : 'administradas'}
+                {' · '}{statusCounts.skipped} {statusCounts.skipped === 1 ? 'omitida' : 'omitidas'}
+              </span>
             </div>
           </div>
         ) : (
@@ -1016,19 +1080,20 @@ function App() {
               </div>
               {scheduleEvents.length > 0 && (
                 <div className="section-actions">
-                  <button
-                    type="button"
-                    className="review-button"
-                    aria-expanded={isScheduleAdjustmentOpen}
-                    aria-controls="schedule-adjustment-panel"
-                    disabled={!isScheduleAdjustmentOpen && adjustableDoseGroups.length === 0}
-                    onClick={() => {
-                      if (isScheduleAdjustmentOpen) setIsScheduleAdjustmentOpen(false)
-                      else openScheduleAdjustment()
-                    }}
-                  >
-                    {isScheduleAdjustmentOpen ? 'Cerrar ajuste' : 'Ajustar tomas futuras'}
-                  </button>
+                  {(isScheduleAdjustmentOpen || canAdjustSchedule) && (
+                    <button
+                      type="button"
+                      className="review-button"
+                      aria-expanded={isScheduleAdjustmentOpen}
+                      aria-controls="schedule-adjustment-panel"
+                      onClick={() => {
+                        if (isScheduleAdjustmentOpen) setIsScheduleAdjustmentOpen(false)
+                        else openScheduleAdjustment()
+                      }}
+                    >
+                      {isScheduleAdjustmentOpen ? 'Cerrar ajuste' : 'Ajustar tomas futuras'}
+                    </button>
+                  )}
                   <button type="button" className="review-button" onClick={openPrescriptionReview}>
                     Revisar el plan
                   </button>
@@ -1059,12 +1124,12 @@ function App() {
                           <strong>{series.medicationName}</strong>
                           <span>
                             Próxima: {format(series.doses[0].scheduledAt, 'EEE d MMM, HH:mm', { locale: es })}
-                            {' · '}{series.doses.length} pendientes
+                            {' · '}{series.doses.length} {series.doses.length === 1 ? 'pendiente' : 'pendientes'}
                             {intervalHours ? ` · cada ${intervalHours} h` : ''}
                           </span>
                           {series.lockedCount > 0 && (
                             <span className="schedule-adjustment-locked">
-                              Tiene {series.lockedCount} toma(s) posterior(es) ya registrada(s); no se ajustará automáticamente.
+                              Tiene {series.lockedCount} {series.lockedCount === 1 ? 'toma posterior ya registrada' : 'tomas posteriores ya registradas'}; no se ajustará automáticamente.
                             </span>
                           )}
                         </div>
@@ -1142,15 +1207,18 @@ function App() {
                     <strong>
                       {todaysDoses.length === 0
                         ? 'Sin tomas programadas'
-                        : `${todaysGivenCount} de ${todaysDoses.length} administradas`}
+                        : `${todaysGivenCount} de ${todaysDoses.length} ${todaysDoses.length === 1 ? 'toma administrada' : 'tomas administradas'}`}
                     </strong>
-                    <span>{todaysPendingCount} por dar · {todaysGivenCount} administradas · {todaysSkippedCount} omitidas</span>
+                    <span>
+                      {todaysPendingCount} por dar · {todaysGivenCount} {todaysGivenCount === 1 ? 'administrada' : 'administradas'}
+                      {' · '}{todaysSkippedCount} {todaysSkippedCount === 1 ? 'omitida' : 'omitidas'}
+                    </span>
                     <div
                       className="today-progress-track"
                       role="img"
                       aria-label={todaysDoses.length === 0
                         ? 'Sin tomas programadas hoy'
-                        : `${todaysGivenCount} de ${todaysDoses.length} tomas administradas hoy`}
+                        : `${todaysGivenCount} de ${todaysDoses.length} ${todaysDoses.length === 1 ? 'toma administrada' : 'tomas administradas'} hoy`}
                     >
                       <span style={{
                         width: `${todaysDoses.length ? (todaysGivenCount / todaysDoses.length) * 100 : 0}%`,
@@ -1439,7 +1507,7 @@ function App() {
         <div
           className="modal-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setIsPrescriptionReviewOpen(false)
+            if (event.target === event.currentTarget) closePrescriptionReview()
           }}
         >
           <section
@@ -1463,7 +1531,7 @@ function App() {
                 type="button"
                 className="modal-close"
                 aria-label="Cerrar revisión"
-                onClick={() => setIsPrescriptionReviewOpen(false)}
+                onClick={closePrescriptionReview}
               >
                 <X size={20} />
               </button>
@@ -1477,6 +1545,36 @@ function App() {
                   : <>Compara cada indicación con la receta original. Pulsa <strong>“Coincide”</strong> solo si puedes confirmar claramente el medicamento y sus instrucciones. Si algo no se entiende, déjalo sin marcar y consúltalo con el médico o farmacéutico.</>}
               </p>
             </div>
+
+            {pendingPlanChange && (
+              <div className="plan-change-warning" role="alert">
+                  <AlertTriangle size={18} />
+                  <div>
+                    <strong>Se reemplazará el calendario activo</strong>
+                    <p>
+                      {pendingPlanChange.type === 'regenerate'
+                        ? 'Se perderá el registro de las tomas ya marcadas y todas volverán a estado pendiente.'
+                        : 'Se borrarán las tomas programadas y sus estados. Después tendrás que revisar las indicaciones y crear un calendario nuevo.'}
+                    </p>
+                    <div className="plan-change-warning-actions">
+                      <button
+                        type="button"
+                        className="cancel-edit-button"
+                        onClick={() => setPendingPlanChange(null)}
+                      >
+                        Conservar el calendario
+                      </button>
+                      <button
+                        type="button"
+                        className="save-edit-button"
+                        onClick={confirmPendingPlanChange}
+                      >
+                        {pendingPlanChange.type === 'regenerate' ? 'Recrear calendario' : 'Eliminarlo y continuar'}
+                      </button>
+                    </div>
+                  </div>
+              </div>
+            )}
 
             {!isScheduleSetupOpen ? (
               <>
@@ -1623,7 +1721,7 @@ function App() {
                       {rule.intervalHours !== null && (
                         <p className="schedule-rule">
                           {rule.totalDoses !== null
-                            ? `${rule.totalDoses} tomas · cada ${rule.intervalHours} horas`
+                            ? `${rule.totalDoses} ${rule.totalDoses === 1 ? 'toma' : 'tomas'} · cada ${rule.intervalHours} horas`
                             : `Cada ${rule.intervalHours} horas`}
                         </p>
                       )}
@@ -1676,7 +1774,7 @@ function App() {
                     type="button"
                     className="save-edit-button"
                     disabled={!scheduleReady}
-                    onClick={generateSchedule}
+                    onClick={() => generateSchedule()}
                   >
                     Crear calendario
                   </button>
@@ -1690,7 +1788,7 @@ function App() {
               <button
                 type="button"
                 className="ghost-btn"
-                onClick={() => setIsPrescriptionReviewOpen(false)}
+                onClick={closePrescriptionReview}
               >
                 Entendido
               </button>

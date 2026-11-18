@@ -3810,3 +3810,62 @@ button:disabled {
 .sidebar .mini-card h3 {
   color: #fff;
 }
+
+.plan-change-warning {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #efcf97;
+  border-radius: 14px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.plan-change-warning > svg {
+  margin-top: 2px;
+}
+
+.plan-change-warning > div {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-change-warning strong {
+  color: var(--color-ink);
+}
+
+.plan-change-warning p {
+  color: var(--color-text);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.plan-change-warning-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.plan-change-warning-actions button {
+  min-height: 44px;
+}
+
+.plan-change-warning-actions .save-edit-button {
+  border-color: var(--color-danger);
+  background: var(--color-danger);
+}
+
+.plan-change-warning-actions .save-edit-button:hover {
+  border-color: #8f4039;
+  background: #8f4039;
+}
+
+@media (max-width: 640px) {
+  .plan-change-warning-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
