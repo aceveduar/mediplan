@@ -896,15 +896,17 @@ function App() {
                 Instalar app
               </button>
             )}
-            <button
-              className="ghost-btn"
-              type="button"
-              aria-label="Revisar indicaciones de la receta"
-              onClick={openPrescriptionReview}
-            >
-              <FileText size={16} />
-              Revisar indicaciones
-            </button>
+            {scheduleEvents.length > 0 && (
+              <button
+                className="ghost-btn"
+                type="button"
+                aria-label="Revisar indicaciones de la receta"
+                onClick={openPrescriptionReview}
+              >
+                <FileText size={16} />
+                Revisar indicaciones
+              </button>
+            )}
           </div>
         </header>
 
@@ -938,7 +940,7 @@ function App() {
               className="setup-progress-action"
               onClick={openPrescriptionReview}
             >
-              Comenzar revisión
+              Revisar indicaciones
             </button>
           </div>
         )}
@@ -1010,15 +1012,6 @@ function App() {
             <p className="file-notice">
               Adjuntar la receta es opcional. El archivo solo se previsualiza aquí; MediPlan no lo interpreta ni lo envía a internet.
             </p>
-            <button
-              type="button"
-              className="review-button"
-              onClick={openPrescriptionReview}
-            >
-              <FileText size={16} />
-              Revisar receta
-              {confirmedItems.length < prescriptionEntries.length && ` · ${prescriptionEntries.length - confirmedItems.length}`}
-            </button>
           </div>
 
         </section>
@@ -1397,14 +1390,6 @@ function App() {
                   <li><span>2</span>Define el inicio</li>
                   <li><span>3</span>Registra las tomas</li>
                 </ol>
-                <button
-                  type="button"
-                  className="review-button"
-                  onClick={openPrescriptionReview}
-                >
-                  <FileText size={16} />
-                  Empezar revisión
-                </button>
               </div>
             )}
           </div>
