@@ -15,11 +15,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
-  CheckCircle2,
-  Download,
-  FileText,
   List,
-  Menu,
   Sun,
 } from 'lucide-react'
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
@@ -42,6 +38,8 @@ import {
 import { TodayScheduleView } from './components/TodayScheduleView'
 import { WeekScheduleView } from './components/WeekScheduleView'
 import { PrescriptionFileAttachment } from './components/PrescriptionFileAttachment'
+import { MainHeader } from './components/MainHeader'
+import { PlanStatusBanner } from './components/PlanStatusBanner'
 
 const recipeAnalysis = {
   patient: 'Amelia',
@@ -610,88 +608,26 @@ function App() {
       />
 
       <main className="main-panel" id="main-content">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Plan de medicación</p>
-            <h1>Plan de {recipeAnalysis.patient}</h1>
-          </div>
-
-          <div className="top-actions">
-            <button
-              type="button"
-              className="sidebar-toggle"
-              aria-label={isSidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
-              aria-expanded={!isSidebarCollapsed}
-              aria-controls="primary-sidebar"
-              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
-            >
-              <Menu size={19} />
-            </button>
-            {installPrompt && !isAppInstalled && (
-              <button
-                type="button"
-                className="ghost-btn"
-                aria-label="Instalar MediPlan en el escritorio"
-                title="Instalar MediPlan como una app"
-                onClick={() => void handleInstallApp()}
-              >
-                <Download size={16} />
-                Instalar app
-              </button>
-            )}
-            {scheduleEvents.length > 0 && (
-              <button
-                className="ghost-btn"
-                type="button"
-                aria-label="Revisar indicaciones de la receta"
-                onClick={openPrescriptionReview}
-              >
-                <FileText size={16} />
-                Revisar indicaciones
-              </button>
-            )}
-          </div>
-        </header>
+        <MainHeader
+          patientName={recipeAnalysis.patient}
+          isSidebarCollapsed={isSidebarCollapsed}
+          canInstall={Boolean(installPrompt && !isAppInstalled)}
+          hasActivePlan={scheduleEvents.length > 0}
+          onToggleSidebar={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+          onInstall={() => void handleInstallApp()}
+          onReviewPrescription={openPrescriptionReview}
+        />
 
         {installError && <p className="file-error" role="alert">{installError}</p>}
 
-        {scheduleEvents.length > 0 ? (
-          <div className="schedule-success plan-status-banner" role="status">
-            <CheckCircle2 size={20} />
-            <div className="plan-status-copy">
-              <strong>Plan activo</strong>
-              <span>
-                {scheduleEvents.length} {scheduleEvents.length === 1 ? 'toma' : 'tomas'} en el calendario
-                {' · '}{statusCounts.pending} por dar
-                {' · '}{statusCounts.given} {statusCounts.given === 1 ? 'administrada' : 'administradas'}
-                {' · '}{statusCounts.skipped} {statusCounts.skipped === 1 ? 'omitida' : 'omitidas'}
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="setup-progress-banner" role="status">
-            <span className="setup-step-marker">1</span>
-            <div className="setup-progress-copy">
-              <span className="setup-progress-kicker">PASO 1 DE 2</span>
-              <strong>Revisa las indicaciones</strong>
-              <span>Confirma cada medicamento con la receta antes de crear el calendario.</span>
-            </div>
-            <div className="setup-progress-count">
-              <strong>{confirmedItems.length}/{prescriptionEntries.length}</strong>
-              <span>confirmadas</span>
-              <div className="setup-progress-track" aria-hidden="true">
-                <span style={{ width: `${prescriptionEntries.length ? (confirmedItems.length / prescriptionEntries.length) * 100 : 0}%` }} />
-              </div>
-            </div>
-            <button
-              type="button"
-              className="setup-progress-action"
-              onClick={openPrescriptionReview}
-            >
-              Revisar indicaciones
-            </button>
-          </div>
-        )}
+        <PlanStatusBanner
+          hasActivePlan={scheduleEvents.length > 0}
+          totalDoses={scheduleEvents.length}
+          statusCounts={statusCounts}
+          confirmedCount={confirmedItems.length}
+          prescriptionCount={prescriptionEntries.length}
+          onReviewPrescription={openPrescriptionReview}
+        />
         {persistenceError && <p className="file-error" role="alert">{persistenceError}</p>}
 
         <section className="hero-grid">
