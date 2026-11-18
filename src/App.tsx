@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import './App.css'
+import type { DoseStatus, PrescriptionEntry, ScheduledDose } from './domain/model'
+import {
+  getDoseSeriesKey,
+  getDoseTimePreview,
+  getScheduleRule,
+  getScheduledDoseTimes,
+  getShiftedDoseTimes,
+  isNightTime,
+  nightWindowLabel,
+  sortDosesForTracking,
+} from './domain/schedule'
+import { getInitialAppData, saveAppData, toStoredAppData } from './storage/appData'
 import {
   AlertTriangle,
   CalendarDays,
@@ -23,15 +35,6 @@ const recipeAnalysis = {
   patient: 'Amelia',
 }
 
-type PrescriptionEntry = {
-  id: string
-  name: string
-  detail: string
-  uncertainty: string
-  durationDays?: number
-}
-
-type DoseStatus = 'pending' | 'given' | 'skipped'
 type ScheduleView = 'today' | 'list' | 'calendar'
 type DoseFilter = 'all' | DoseStatus
 type PendingPlanChange =
@@ -44,51 +47,12 @@ type InstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
 }
 
-type ScheduledDose = {
-  id: string
-  medicationName: string
-  instructions: string
-  scheduledAt: Date
-  administeredAt: Date | null
-  status: DoseStatus
-}
-
 type AdjustableDoseSeries = {
   key: string
   medicationName: string
   instructions: string
   doses: ScheduledDose[]
   lockedCount: number
-}
-
-type StoredScheduleDose = Omit<ScheduledDose, 'scheduledAt' | 'administeredAt'> & {
-  scheduledAt: string
-  administeredAt?: string | null
-  status?: DoseStatus
-}
-
-type StoredAppData = {
-  version: 1
-  prescriptionEntries: PrescriptionEntry[]
-  confirmedItems: string[]
-  firstDoseTimes: Record<string, string>
-  scheduleEvents: StoredScheduleDose[]
-}
-
-type InitialAppData = Omit<StoredAppData, 'scheduleEvents'> & {
-  scheduleEvents: ScheduledDose[]
-  error: string
-}
-
-function getDoseSeriesKey(dose: Pick<ScheduledDose, 'medicationName' | 'instructions'>) {
-  return JSON.stringify([dose.medicationName, dose.instructions])
-}
-
-function sortDosesForTracking(doses: ScheduledDose[]) {
-  return [...doses].sort((left, right) => {
-    const statusOrder = Number(left.status !== 'pending') - Number(right.status !== 'pending')
-    return statusOrder || left.scheduledAt.getTime() - right.scheduledAt.getTime()
-  })
 }
 
 function toLocalDateTimeValue(date: Date) {
@@ -98,37 +62,6 @@ function toLocalDateTimeValue(date: Date) {
 function formatScheduleTime(date: Date, datePattern?: string) {
   const dateLabel = datePattern ? `${format(date, datePattern, { locale: es })}, ` : ''
   return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
-}
-
-const nightWindowStartHour = 20
-const nightWindowEndHour = 7
-const nightWindowLabel = '8:00 PM–7:00 AM'
-
-function isNightTime(date: Date) {
-  const hour = date.getHours()
-  return hour >= nightWindowStartHour || hour < nightWindowEndHour
-}
-
-function getScheduledDoseTimes(firstDose: Date, intervalHours: number, totalDoses: number) {
-  return Array.from(
-    { length: totalDoses },
-    (_, index) => new Date(firstDose.getTime() + index * intervalHours * 60 * 60 * 1000),
-  )
-}
-
-function getShiftedDoseTimes(doses: ScheduledDose[], newFirstDose: Date) {
-  const originalFirstDose = doses[0].scheduledAt.getTime()
-  const offset = newFirstDose.getTime() - originalFirstDose
-  return doses.map((dose) => new Date(dose.scheduledAt.getTime() + offset))
-}
-
-function getDoseTimePreview(times: Date[]) {
-  const visibleTimes = times.slice(0, 4)
-  return {
-    times: visibleTimes,
-    remainingCount: times.length - visibleTimes.length,
-    nightCount: times.filter(isNightTime).length,
-  }
 }
 
 type DoseTimePreviewData = ReturnType<typeof getDoseTimePreview>
@@ -163,198 +96,6 @@ function DoseTimePreview({ preview, title }: { preview: DoseTimePreviewData; tit
       )}
     </div>
   )
-}
-
-const initialPrescriptionEntries: PrescriptionEntry[] = [
-  {
-    id: 'combination-medicine',
-    name: 'Amantadina / clorfeniramina / paracetamol (solución infantil)',
-    detail: 'Dar 2.5 ml cada 8 horas durante 5 días.',
-    uncertainty: 'Verifica el nombre del producto y la indicación con la receta.',
-  },
-  {
-    id: 'bromhexine',
-    name: 'Bromhexina (solución infantil)',
-    detail: 'Dar 1.5 ml cada 8 horas durante 10 días.',
-    uncertainty: 'Verifica la cantidad y la indicación con la receta.',
-  },
-  {
-    id: 'colifrin',
-    name: 'Collifrin (infantil)',
-    detail: 'Aplicar 1 a 2 gotas en cada fosa nasal cada 12 horas durante 3 a 5 días.',
-    uncertainty: 'Elige la duración indicada dentro del rango de 3 a 5 días para calcular el calendario.',
-  },
-  {
-    id: 'amoxicillin-clavulanate',
-    name: 'Amoxicilina / ácido clavulánico',
-    detail: 'Suspensión 125 mg / 5 ml: dar 5 ml cada 8 horas durante 7 días.',
-    uncertainty: 'Verifica la presentación y la indicación con la receta.',
-  },
-]
-
-const previousPrescriptionDetails: Record<string, string> = {
-  'combination-medicine': 'Parece indicar 2.5 ml cada 8 horas por 5 días.',
-  bromhexine: 'Parece indicar 1.5 ml cada 8 horas por 10 días.',
-  colifrin: 'Parece indicar 1–2 gotas cada 12 horas; la duración no se distingue con certeza.',
-  'amoxicillin-clavulanate': 'Parece indicar suspensión 125/31.25 mg por 5 ml: 5 ml cada 8 horas por 7 días.',
-}
-
-const storageKey = 'mediplan:amelia:v1'
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function isPrescriptionEntry(value: unknown): value is PrescriptionEntry {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.name === 'string'
-    && typeof value.detail === 'string'
-    && typeof value.uncertainty === 'string'
-    && (value.durationDays === undefined
-      || (typeof value.durationDays === 'number' && Number.isInteger(value.durationDays)))
-}
-
-function isStoredScheduleDose(value: unknown): value is StoredScheduleDose {
-  return isRecord(value)
-    && typeof value.id === 'string'
-    && typeof value.medicationName === 'string'
-    && typeof value.instructions === 'string'
-    && typeof value.scheduledAt === 'string'
-    && Number.isFinite(Date.parse(value.scheduledAt))
-    && (value.administeredAt === undefined
-      || value.administeredAt === null
-      || (typeof value.administeredAt === 'string' && Number.isFinite(Date.parse(value.administeredAt))))
-    && (value.status === undefined || isDoseStatus(value.status))
-}
-
-function isDoseStatus(value: unknown): value is DoseStatus {
-  return value === 'pending' || value === 'given' || value === 'skipped'
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every((item) => typeof item === 'string')
-}
-
-function loadSavedAppData(): { data: StoredAppData; error: string } {
-  const defaults: StoredAppData = {
-    version: 1,
-    prescriptionEntries: initialPrescriptionEntries,
-    confirmedItems: [],
-    firstDoseTimes: {},
-    scheduleEvents: [],
-  }
-
-  try {
-    const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return { data: defaults, error: '' }
-
-    const parsed: unknown = JSON.parse(raw)
-    if (
-      !isRecord(parsed)
-      || parsed.version !== 1
-      || !Array.isArray(parsed.prescriptionEntries)
-      || !parsed.prescriptionEntries.every(isPrescriptionEntry)
-      || !Array.isArray(parsed.confirmedItems)
-      || !parsed.confirmedItems.every((item) => typeof item === 'string')
-      || !isStringRecord(parsed.firstDoseTimes)
-      || !Array.isArray(parsed.scheduleEvents)
-      || !parsed.scheduleEvents.every(isStoredScheduleDose)
-    ) {
-      throw new Error('El formato guardado no es válido.')
-    }
-
-    return {
-      data: {
-        version: 1,
-        prescriptionEntries: parsed.prescriptionEntries,
-        confirmedItems: parsed.confirmedItems,
-        firstDoseTimes: parsed.firstDoseTimes,
-        scheduleEvents: parsed.scheduleEvents,
-      },
-      error: '',
-    }
-  } catch (error) {
-    console.error('No se pudieron recuperar los datos de MediPlan:', error)
-    return {
-      data: defaults,
-      error: 'No se pudieron leer los datos guardados. Tus cambios nuevos podrían no conservarse.',
-    }
-  }
-}
-
-function getInitialAppData(): InitialAppData {
-  const saved = loadSavedAppData()
-  const updatedIds: string[] = []
-  const prescriptionEntries = saved.data.prescriptionEntries.map((entry) => {
-    const updatedEntry = initialPrescriptionEntries.find((item) => item.id === entry.id)
-    const savedCollifrinDuration = entry.id === 'colifrin'
-      ? entry.detail.match(/\b(?:por|durante|x)\s*([3-5])\s*d[ií]as?\b/i)
-      : null
-    const isSavedCollifrinChoice = entry.id === 'colifrin'
-      && /\b(?:cada|c\/)\s*12\s*(?:h|hrs?|horas?)\b/i.test(entry.detail)
-      && /\bgotas?\b/i.test(entry.detail)
-      && savedCollifrinDuration !== null
-
-    if (updatedEntry && (
-      entry.detail === previousPrescriptionDetails[entry.id]
-      || isSavedCollifrinChoice
-    )) {
-      updatedIds.push(entry.id)
-      return savedCollifrinDuration
-        ? { ...updatedEntry, durationDays: Number(savedCollifrinDuration[1]) }
-        : updatedEntry
-    }
-    return entry
-  })
-  const validIds = new Set(prescriptionEntries.map((entry) => entry.id))
-
-  return {
-    ...saved.data,
-    prescriptionEntries,
-    confirmedItems: saved.data.confirmedItems.filter((id) => validIds.has(id) && !updatedIds.includes(id)),
-    scheduleEvents: saved.data.scheduleEvents.map((event) => {
-      const updatedEntry = prescriptionEntries.find((entry) =>
-        updatedIds.includes(entry.id) && event.id.startsWith(`${entry.id}-`),
-      )
-      return {
-        ...event,
-        medicationName: updatedEntry?.name ?? event.medicationName,
-        instructions: updatedEntry?.detail ?? event.instructions,
-        scheduledAt: new Date(event.scheduledAt),
-        administeredAt: event.administeredAt ? new Date(event.administeredAt) : null,
-        status: event.status ?? 'pending',
-      }
-    }),
-    error: saved.error,
-  }
-}
-
-function getScheduleRule(detail: string, selectedDurationDays?: number) {
-  const intervalMatch = detail.match(/\b(?:cada|c\/)\s*(\d+)\s*(?:h|hrs?|horas?)\b/i)
-  const durationRangeMatch = detail.match(/\b(?:por|durante|x)\s*(\d+)\s*(?:a|hasta|[-–])\s*(\d+)\s*d[ií]as?\b/i)
-  const daysMatch = durationRangeMatch
-    ? null
-    : detail.match(/\b(?:por|durante|x)\s*(\d+)\s*d[ií]as?\b/i)
-  const dosesMatch = detail.match(/\b(?:por|x)\s*(\d+)\s*dosis\b/i)
-  const intervalHours = intervalMatch ? Number(intervalMatch[1]) : null
-  const durationRange = durationRangeMatch
-    ? { min: Number(durationRangeMatch[1]), max: Number(durationRangeMatch[2]) }
-    : null
-  const validSelectedDuration = durationRange
-    && selectedDurationDays !== undefined
-    && selectedDurationDays >= durationRange.min
-    && selectedDurationDays <= durationRange.max
-    ? selectedDurationDays
-    : null
-  const durationDays = daysMatch ? Number(daysMatch[1]) : validSelectedDuration
-  const totalDoses = dosesMatch
-    ? Number(dosesMatch[1])
-    : durationDays && intervalHours
-      ? Math.ceil((durationDays * 24) / intervalHours)
-      : null
-
-  return { intervalHours, totalDoses, durationRange }
 }
 
 function App() {
@@ -520,21 +261,13 @@ function App() {
     if (!canPersist) return
 
     try {
-      const savedData: StoredAppData = {
-        version: 1,
+      const savedData = toStoredAppData({
         prescriptionEntries: changes.prescriptionEntries ?? prescriptionEntries,
         confirmedItems: changes.confirmedItems ?? confirmedItems,
         firstDoseTimes: changes.firstDoseTimes ?? firstDoseTimes,
-        scheduleEvents: (changes.scheduleEvents ?? scheduleEvents).map((event) => ({
-          id: event.id,
-          medicationName: event.medicationName,
-          instructions: event.instructions,
-          scheduledAt: event.scheduledAt.toISOString(),
-          administeredAt: event.administeredAt?.toISOString() ?? null,
-          status: event.status,
-        })),
-      }
-      window.localStorage.setItem(storageKey, JSON.stringify(savedData))
+        scheduleEvents: changes.scheduleEvents ?? scheduleEvents,
+      })
+      saveAppData(savedData)
       setPersistenceError('')
     } catch (error) {
       console.error('No se pudieron guardar los datos de MediPlan:', error)
@@ -711,20 +444,12 @@ function App() {
     else generateSchedule(true)
   }
   const downloadScheduleJson = () => {
-    const savedData: StoredAppData = {
-      version: 1,
+    const savedData = toStoredAppData({
       prescriptionEntries,
       confirmedItems,
       firstDoseTimes,
-      scheduleEvents: scheduleEvents.map((event) => ({
-        id: event.id,
-        medicationName: event.medicationName,
-        instructions: event.instructions,
-        scheduledAt: event.scheduledAt.toISOString(),
-        administeredAt: event.administeredAt?.toISOString() ?? null,
-        status: event.status,
-      })),
-    }
+      scheduleEvents,
+    })
     const downloadUrl = URL.createObjectURL(
       new Blob([JSON.stringify(savedData, null, 2)], { type: 'application/json' }),
     )
