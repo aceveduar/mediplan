@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import './App.css'
 import {
   AlertTriangle,
-  Bell,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -829,16 +828,6 @@ function App() {
           >
             <FileText size={18} />
             <span className="nav-label">Recetas</span>
-          </button>
-          <button
-            type="button"
-            className="nav-item"
-            aria-label="Recordatorios"
-            disabled
-            title="Disponible próximamente"
-          >
-            <Bell size={18} />
-            <span className="nav-label">Recordatorios</span>
           </button>
           <button
             type="button"
