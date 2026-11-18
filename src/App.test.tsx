@@ -16,6 +16,29 @@ function getStoredScheduleEvents() {
   return JSON.parse(saved).scheduleEvents as Array<{ id: string; status: string }>
 }
 
+async function createActiveSchedule(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: 'Revisar indicaciones' }))
+
+  for (let index = 0; index < initialPrescriptionEntries.length; index += 1) {
+    await user.click(screen.getAllByRole('button', { name: 'Coincide' })[0])
+  }
+
+  await user.click(screen.getByRole('button', { name: 'Continuar al calendario' }))
+  await user.selectOptions(
+    screen.getByLabelText('Duración del tratamiento (elige de 3 a 5 días)'),
+    '3',
+  )
+
+  const startTime = toLocalDateTimeValue(new Date())
+  for (const entry of initialPrescriptionEntries) {
+    fireEvent.change(screen.getByLabelText('Fecha y hora de la primera toma', {
+      selector: `#first-dose-${entry.id}`,
+    }), { target: { value: startTime } })
+  }
+
+  await user.click(screen.getByRole('button', { name: 'Crear calendario' }))
+}
+
 beforeEach(() => {
   window.localStorage.clear()
   Object.defineProperty(window, 'matchMedia', {
@@ -34,27 +57,7 @@ describe('MediPlan medication flow', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Revisar indicaciones' }))
-    expect(screen.getByRole('dialog', { name: 'Revisa los medicamentos' })).toBeTruthy()
-
-    for (let index = 0; index < initialPrescriptionEntries.length; index += 1) {
-      await user.click(screen.getAllByRole('button', { name: 'Coincide' })[0])
-    }
-
-    await user.click(screen.getByRole('button', { name: 'Continuar al calendario' }))
-    await user.selectOptions(
-      screen.getByLabelText('Duración del tratamiento (elige de 3 a 5 días)'),
-      '3',
-    )
-
-    const startTime = toLocalDateTimeValue(new Date())
-    for (const entry of initialPrescriptionEntries) {
-      fireEvent.change(screen.getByLabelText('Fecha y hora de la primera toma', {
-        selector: `#first-dose-${entry.id}`,
-      }), { target: { value: startTime } })
-    }
-
-    await user.click(screen.getByRole('button', { name: 'Crear calendario' }))
+    await createActiveSchedule(user)
 
     const medicationName = initialPrescriptionEntries[0].name
     const markAsGivenName = `Marcar ${medicationName} como administrada`
@@ -67,5 +70,21 @@ describe('MediPlan medication flow', () => {
     })[0])
     expect(getStoredScheduleEvents().find((dose) => dose.id === 'combination-medicine-0')?.status)
       .toBe('pending')
+  })
+
+  it('preserves the active schedule when a destructive plan change is canceled', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await createActiveSchedule(user)
+    const eventsBeforeReview = getStoredScheduleEvents()
+
+    await user.click(screen.getByRole('button', { name: 'Revisar el plan' }))
+    await user.click(screen.getAllByRole('button', { name: 'Revisada ✓' })[0])
+
+    expect(screen.getByText('Se reemplazará el calendario activo')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Conservar el calendario' }))
+
+    expect(getStoredScheduleEvents()).toEqual(eventsBeforeReview)
+    expect(screen.getByText('Plan activo')).toBeTruthy()
   })
 })
