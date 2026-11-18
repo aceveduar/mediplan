@@ -3,7 +3,21 @@ export type PrescriptionEntry = {
   name: string
   detail: string
   uncertainty: string
-  durationDays?: number
+  schedule: PrescriptionSchedule
+}
+
+export type DoseAmount = {
+  min: number | null
+  max: number | null
+  unit: string
+}
+
+export type PrescriptionSchedule = {
+  dose: DoseAmount
+  route: string
+  intervalHours: number | null
+  durationDays: number | null
+  durationRange: { min: number; max: number } | null
 }
 
 export type DoseStatus = 'pending' | 'given' | 'skipped'

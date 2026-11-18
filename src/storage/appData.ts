@@ -1,5 +1,5 @@
-import type { DoseStatus, PrescriptionEntry, ScheduledDose } from '../domain/model'
-import { initialPrescriptionEntries, previousPrescriptionDetails } from '../domain/prescriptions'
+import type { DoseStatus, PrescriptionEntry, PrescriptionSchedule, ScheduledDose } from '../domain/model'
+import { initialPrescriptionEntries } from '../domain/prescriptions'
 
 type StoredScheduleDose = Omit<ScheduledDose, 'scheduledAt' | 'administeredAt'> & {
   scheduledAt: string
@@ -7,8 +7,20 @@ type StoredScheduleDose = Omit<ScheduledDose, 'scheduledAt' | 'administeredAt'> 
   status?: DoseStatus
 }
 
-export type StoredAppData = {
+type LegacyPrescriptionEntry = Omit<PrescriptionEntry, 'schedule'> & {
+  durationDays?: number
+}
+
+type LegacyStoredAppData = {
   version: 1
+  prescriptionEntries: LegacyPrescriptionEntry[]
+  confirmedItems: string[]
+  firstDoseTimes: Record<string, string>
+  scheduleEvents: StoredScheduleDose[]
+}
+
+export type StoredAppData = {
+  version: 2
   prescriptionEntries: PrescriptionEntry[]
   confirmedItems: string[]
   firstDoseTimes: Record<string, string>
@@ -24,13 +36,71 @@ type AppDataSnapshot = Omit<StoredAppData, 'version' | 'scheduleEvents'> & {
   scheduleEvents: ScheduledDose[]
 }
 
-const storageKey = 'mediplan:amelia:v1'
+type LoadedAppData = {
+  data: StoredAppData
+  error: string
+  migrated: boolean
+}
+
+const storageKey = 'mediplan:amelia:v2'
+const legacyStorageKey = 'mediplan:amelia:v1'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function isOptionalPositiveNumber(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && Number.isFinite(value) && value > 0)
+}
+
+function isPrescriptionSchedule(value: unknown): value is PrescriptionSchedule {
+  if (!isRecord(value) || !isRecord(value.dose)) return false
+
+  const { dose, durationRange } = value
+  const validRange = durationRange === null
+    || (isRecord(durationRange)
+      && typeof durationRange.min === 'number'
+      && Number.isInteger(durationRange.min)
+      && durationRange.min > 0
+      && typeof durationRange.max === 'number'
+      && Number.isInteger(durationRange.max)
+      && durationRange.max >= durationRange.min)
+  const doseMin = dose.min
+  const doseMax = dose.max
+  const intervalHours = value.intervalHours
+  const durationDays = value.durationDays
+  const durationWithinRange = durationRange === null
+    || durationDays === null
+    || (isRecord(durationRange)
+      && typeof durationDays === 'number'
+      && typeof durationRange.min === 'number'
+      && typeof durationRange.max === 'number'
+      && durationDays >= durationRange.min
+      && durationDays <= durationRange.max)
+
+  return isOptionalPositiveNumber(doseMin)
+    && isOptionalPositiveNumber(doseMax)
+    && (doseMin === null || doseMax === null || doseMax >= doseMin)
+    && typeof dose.unit === 'string'
+    && typeof value.route === 'string'
+    && isOptionalPositiveNumber(intervalHours)
+    && (intervalHours === null || Number.isInteger(intervalHours))
+    && isOptionalPositiveNumber(durationDays)
+    && (durationDays === null || Number.isInteger(durationDays))
+    && validRange
+    && durationWithinRange
+}
+
 function isPrescriptionEntry(value: unknown): value is PrescriptionEntry {
+  return isRecord(value)
+    && typeof value.id === 'string'
+    && typeof value.name === 'string'
+    && typeof value.detail === 'string'
+    && typeof value.uncertainty === 'string'
+    && isPrescriptionSchedule(value.schedule)
+}
+
+function isLegacyPrescriptionEntry(value: unknown): value is LegacyPrescriptionEntry {
   return isRecord(value)
     && typeof value.id === 'string'
     && typeof value.name === 'string'
@@ -61,9 +131,78 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === 'string')
 }
 
-function loadSavedAppData(): { data: StoredAppData; error: string } {
+function hasCommonStoredFields(value: Record<string, unknown>) {
+  return Array.isArray(value.confirmedItems)
+    && value.confirmedItems.every((item) => typeof item === 'string')
+    && isStringRecord(value.firstDoseTimes)
+    && Array.isArray(value.scheduleEvents)
+    && value.scheduleEvents.every(isStoredScheduleDose)
+}
+
+function isStoredAppData(value: unknown): value is StoredAppData {
+  return isRecord(value)
+    && value.version === 2
+    && hasCommonStoredFields(value)
+    && Array.isArray(value.prescriptionEntries)
+    && value.prescriptionEntries.every(isPrescriptionEntry)
+}
+
+function isLegacyStoredAppData(value: unknown): value is LegacyStoredAppData {
+  return isRecord(value)
+    && value.version === 1
+    && hasCommonStoredFields(value)
+    && Array.isArray(value.prescriptionEntries)
+    && value.prescriptionEntries.every(isLegacyPrescriptionEntry)
+}
+
+function createUnresolvedSchedule(): PrescriptionSchedule {
+  return {
+    dose: { min: null, max: null, unit: '' },
+    route: '',
+    intervalHours: null,
+    durationDays: null,
+    durationRange: null,
+  }
+}
+
+function migrateLegacyAppData(legacy: LegacyStoredAppData): StoredAppData {
+  const unresolvedIds = new Set<string>()
+  const prescriptionEntries = legacy.prescriptionEntries.map((entry) => {
+    const knownEntry = initialPrescriptionEntries.find((initial) =>
+      initial.id === entry.id && initial.detail === entry.detail,
+    )
+
+    if (!knownEntry) {
+      unresolvedIds.add(entry.id)
+      return { ...entry, schedule: createUnresolvedSchedule() }
+    }
+
+    const range = knownEntry.schedule.durationRange
+    const savedDuration = range
+      && entry.durationDays !== undefined
+      && entry.durationDays >= range.min
+      && entry.durationDays <= range.max
+      ? entry.durationDays
+      : knownEntry.schedule.durationDays
+
+    return {
+      ...entry,
+      schedule: { ...knownEntry.schedule, durationDays: savedDuration },
+    }
+  })
+
+  return {
+    version: 2,
+    prescriptionEntries,
+    confirmedItems: legacy.confirmedItems.filter((id) => !unresolvedIds.has(id)),
+    firstDoseTimes: legacy.firstDoseTimes,
+    scheduleEvents: legacy.scheduleEvents,
+  }
+}
+
+function loadSavedAppData(): LoadedAppData {
   const defaults: StoredAppData = {
-    version: 1,
+    version: 2,
     prescriptionEntries: initialPrescriptionEntries,
     confirmedItems: [],
     firstDoseTimes: {},
@@ -72,92 +211,50 @@ function loadSavedAppData(): { data: StoredAppData; error: string } {
 
   try {
     const raw = window.localStorage.getItem(storageKey)
-    if (!raw) return { data: defaults, error: '' }
+      ?? window.localStorage.getItem(legacyStorageKey)
+    if (!raw) return { data: defaults, error: '', migrated: false }
 
     const parsed: unknown = JSON.parse(raw)
-    if (
-      !isRecord(parsed)
-      || parsed.version !== 1
-      || !Array.isArray(parsed.prescriptionEntries)
-      || !parsed.prescriptionEntries.every(isPrescriptionEntry)
-      || !Array.isArray(parsed.confirmedItems)
-      || !parsed.confirmedItems.every((item) => typeof item === 'string')
-      || !isStringRecord(parsed.firstDoseTimes)
-      || !Array.isArray(parsed.scheduleEvents)
-      || !parsed.scheduleEvents.every(isStoredScheduleDose)
-    ) {
-      throw new Error('El formato guardado no es válido.')
+    if (isStoredAppData(parsed)) return { data: parsed, error: '', migrated: false }
+    if (isLegacyStoredAppData(parsed)) {
+      return { data: migrateLegacyAppData(parsed), error: '', migrated: true }
     }
-
-    return {
-      data: {
-        version: 1,
-        prescriptionEntries: parsed.prescriptionEntries,
-        confirmedItems: parsed.confirmedItems,
-        firstDoseTimes: parsed.firstDoseTimes,
-        scheduleEvents: parsed.scheduleEvents,
-      },
-      error: '',
-    }
+    throw new Error('El formato guardado no es válido.')
   } catch (error) {
     console.error('No se pudieron recuperar los datos de MediPlan:', error)
     return {
       data: defaults,
       error: 'No se pudieron leer los datos guardados. Tus cambios nuevos podrían no conservarse.',
+      migrated: false,
     }
   }
 }
 
 export function getInitialAppData(): InitialAppData {
   const saved = loadSavedAppData()
-  const updatedIds: string[] = []
-  const prescriptionEntries = saved.data.prescriptionEntries.map((entry) => {
-    const updatedEntry = initialPrescriptionEntries.find((item) => item.id === entry.id)
-    const savedCollifrinDuration = entry.id === 'colifrin'
-      ? entry.detail.match(/\b(?:por|durante|x)\s*([3-5])\s*d[ií]as?\b/i)
-      : null
-    const isSavedCollifrinChoice = entry.id === 'colifrin'
-      && /\b(?:cada|c\/)\s*12\s*(?:h|hrs?|horas?)\b/i.test(entry.detail)
-      && /\bgotas?\b/i.test(entry.detail)
-      && savedCollifrinDuration !== null
+  const scheduleEvents = saved.data.scheduleEvents.map((event) => ({
+    ...event,
+    scheduledAt: new Date(event.scheduledAt),
+    administeredAt: event.administeredAt ? new Date(event.administeredAt) : null,
+    status: event.status ?? 'pending',
+  }))
 
-    if (updatedEntry && (
-      entry.detail === previousPrescriptionDetails[entry.id]
-      || isSavedCollifrinChoice
-    )) {
-      updatedIds.push(entry.id)
-      return savedCollifrinDuration
-        ? { ...updatedEntry, durationDays: Number(savedCollifrinDuration[1]) }
-        : updatedEntry
+  let error = saved.error
+  if (saved.migrated) {
+    try {
+      saveAppData(saved.data)
+    } catch (migrationError) {
+      console.error('No se pudieron actualizar los datos al nuevo formato de MediPlan:', migrationError)
+      error = 'Tus datos anteriores se conservaron, pero no se pudo completar la actualización.'
     }
-    return entry
-  })
-  const validIds = new Set(prescriptionEntries.map((entry) => entry.id))
-
-  return {
-    ...saved.data,
-    prescriptionEntries,
-    confirmedItems: saved.data.confirmedItems.filter((id) => validIds.has(id) && !updatedIds.includes(id)),
-    scheduleEvents: saved.data.scheduleEvents.map((event) => {
-      const updatedEntry = prescriptionEntries.find((entry) =>
-        updatedIds.includes(entry.id) && event.id.startsWith(`${entry.id}-`),
-      )
-      return {
-        ...event,
-        medicationName: updatedEntry?.name ?? event.medicationName,
-        instructions: updatedEntry?.detail ?? event.instructions,
-        scheduledAt: new Date(event.scheduledAt),
-        administeredAt: event.administeredAt ? new Date(event.administeredAt) : null,
-        status: event.status ?? 'pending',
-      }
-    }),
-    error: saved.error,
   }
+
+  return { ...saved.data, scheduleEvents, error }
 }
 
 export function toStoredAppData(data: AppDataSnapshot): StoredAppData {
   return {
-    version: 1,
+    version: 2,
     prescriptionEntries: data.prescriptionEntries,
     confirmedItems: data.confirmedItems,
     firstDoseTimes: data.firstDoseTimes,

@@ -1,8 +1,15 @@
-import type { ScheduledDose } from './model'
+import type { PrescriptionSchedule, ScheduledDose } from './model'
+import { format } from 'date-fns'
+import { es } from 'date-fns/locale'
 
 export const nightWindowStartHour = 20
 export const nightWindowEndHour = 7
 export const nightWindowLabel = '8:00 PM–7:00 AM'
+
+export function formatScheduleTime(date: Date, datePattern?: string) {
+  const dateLabel = datePattern ? `${format(date, datePattern, { locale: es })}, ` : ''
+  return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
+}
 
 export function getDoseSeriesKey(dose: Pick<ScheduledDose, 'medicationName' | 'instructions'>) {
   return JSON.stringify([dose.medicationName, dose.instructions])
@@ -42,29 +49,27 @@ export function getDoseTimePreview(times: Date[]) {
   }
 }
 
-export function getScheduleRule(detail: string, selectedDurationDays?: number) {
-  const intervalMatch = detail.match(/\b(?:cada|c\/)\s*(\d+)\s*(?:h|hrs?|horas?)\b/i)
-  const durationRangeMatch = detail.match(/\b(?:por|durante|x)\s*(\d+)\s*(?:a|hasta|[-–])\s*(\d+)\s*d[ií]as?\b/i)
-  const daysMatch = durationRangeMatch
-    ? null
-    : detail.match(/\b(?:por|durante|x)\s*(\d+)\s*d[ií]as?\b/i)
-  const dosesMatch = detail.match(/\b(?:por|x)\s*(\d+)\s*dosis\b/i)
-  const intervalHours = intervalMatch ? Number(intervalMatch[1]) : null
-  const durationRange = durationRangeMatch
-    ? { min: Number(durationRangeMatch[1]), max: Number(durationRangeMatch[2]) }
-    : null
-  const validSelectedDuration = durationRange
-    && selectedDurationDays !== undefined
-    && selectedDurationDays >= durationRange.min
-    && selectedDurationDays <= durationRange.max
-    ? selectedDurationDays
-    : null
-  const durationDays = daysMatch ? Number(daysMatch[1]) : validSelectedDuration
-  const totalDoses = dosesMatch
-    ? Number(dosesMatch[1])
-    : durationDays && intervalHours
-      ? Math.ceil((durationDays * 24) / intervalHours)
+export function getScheduleRule(schedule: PrescriptionSchedule) {
+  const { intervalHours, durationRange } = schedule
+  const durationDays = durationRange
+    ? schedule.durationDays !== null
+      && schedule.durationDays >= durationRange.min
+      && schedule.durationDays <= durationRange.max
+      ? schedule.durationDays
       : null
+    : schedule.durationDays
+  const totalDoses = intervalHours && durationDays
+    ? Math.ceil((durationDays * 24) / intervalHours)
+    : null
 
   return { intervalHours, totalDoses, durationRange }
+}
+
+export function hasValidDoseAmount(schedule: PrescriptionSchedule) {
+  const { min, max, unit } = schedule.dose
+  return min !== null
+    && Number.isFinite(min)
+    && min > 0
+    && (max === null || (Number.isFinite(max) && max >= min))
+    && unit.trim().length > 0
 }

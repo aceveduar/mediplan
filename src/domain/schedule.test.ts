@@ -1,21 +1,36 @@
 import { describe, expect, it } from 'vitest'
+import type { PrescriptionSchedule } from './model'
 import { getScheduleRule, getScheduledDoseTimes, isNightTime } from './schedule'
 
 describe('schedule rules', () => {
-  it('calculates dose counts from interval and duration', () => {
-    expect(getScheduleRule('Dar 2.5 ml cada 8 horas durante 5 días')).toEqual({
+  it('calculates dose counts from explicit interval and duration fields', () => {
+    const schedule: PrescriptionSchedule = {
+      dose: { min: 2.5, max: 2.5, unit: 'ml' },
+      route: '',
+      intervalHours: 8,
+      durationDays: 5,
+      durationRange: null,
+    }
+
+    expect(getScheduleRule(schedule)).toEqual({
       intervalHours: 8,
       totalDoses: 15,
       durationRange: null,
     })
   })
 
-  it('requires an explicit duration choice when the prescription gives a range', () => {
-    const detail = 'Aplicar cada 12 horas durante 3 a 5 días'
+  it('requires an explicit duration choice when a schedule has a duration range', () => {
+    const schedule: PrescriptionSchedule = {
+      dose: { min: 1, max: 2, unit: 'gotas' },
+      route: 'Nasal',
+      intervalHours: 12,
+      durationDays: null,
+      durationRange: { min: 3, max: 5 },
+    }
 
-    expect(getScheduleRule(detail).totalDoses).toBeNull()
-    expect(getScheduleRule(detail, 4).totalDoses).toBe(8)
-    expect(getScheduleRule(detail, 6).totalDoses).toBeNull()
+    expect(getScheduleRule(schedule).totalDoses).toBeNull()
+    expect(getScheduleRule({ ...schedule, durationDays: 4 }).totalDoses).toBe(8)
+    expect(getScheduleRule({ ...schedule, durationDays: 6 }).totalDoses).toBeNull()
   })
 
   it('generates dose times at the exact interval across midnight', () => {

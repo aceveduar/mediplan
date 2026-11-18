@@ -7,6 +7,8 @@ import {
   getScheduleRule,
   getScheduledDoseTimes,
   getShiftedDoseTimes,
+  formatScheduleTime,
+  hasValidDoseAmount,
   isNightTime,
   nightWindowLabel,
   sortDosesForTracking,
@@ -30,6 +32,8 @@ import {
 } from 'lucide-react'
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { DoseCard } from './components/DoseCard'
+import { MobileNavigation, Sidebar } from './components/Navigation'
 
 const recipeAnalysis = {
   patient: 'Amelia',
@@ -55,13 +59,54 @@ type AdjustableDoseSeries = {
   lockedCount: number
 }
 
-function toLocalDateTimeValue(date: Date) {
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
+type PrescriptionEditValues = {
+  name: string
+  detail: string
+  doseMin: string
+  doseMax: string
+  doseUnit: string
+  route: string
+  intervalHours: string
+  durationDays: string
+  durationMin: string
+  durationMax: string
 }
 
-function formatScheduleTime(date: Date, datePattern?: string) {
-  const dateLabel = datePattern ? `${format(date, datePattern, { locale: es })}, ` : ''
-  return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
+const emptyPrescriptionEditValues: PrescriptionEditValues = {
+  name: '',
+  detail: '',
+  doseMin: '',
+  doseMax: '',
+  doseUnit: '',
+  route: '',
+  intervalHours: '',
+  durationDays: '',
+  durationMin: '',
+  durationMax: '',
+}
+
+function getPrescriptionEditValues(entry: PrescriptionEntry): PrescriptionEditValues {
+  return {
+    name: entry.name,
+    detail: entry.detail,
+    doseMin: entry.schedule.dose.min?.toString() ?? '',
+    doseMax: entry.schedule.dose.max?.toString() ?? '',
+    doseUnit: entry.schedule.dose.unit,
+    route: entry.schedule.route,
+    intervalHours: entry.schedule.intervalHours?.toString() ?? '',
+    durationDays: entry.schedule.durationDays?.toString() ?? '',
+    durationMin: entry.schedule.durationRange?.min.toString() ?? '',
+    durationMax: entry.schedule.durationRange?.max.toString() ?? '',
+  }
+}
+
+function parsePositiveNumber(value: string) {
+  const parsed = Number(value)
+  return value.trim() !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function toLocalDateTimeValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
 type DoseTimePreviewData = ReturnType<typeof getDoseTimePreview>
@@ -112,7 +157,7 @@ function App() {
   const [prescriptionEntries, setPrescriptionEntries] = useState(initialData.prescriptionEntries)
   const [confirmedItems, setConfirmedItems] = useState(initialData.confirmedItems)
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
-  const [editValues, setEditValues] = useState({ name: '', detail: '' })
+  const [editValues, setEditValues] = useState(emptyPrescriptionEditValues)
   const [editError, setEditError] = useState('')
   const [pendingPlanChange, setPendingPlanChange] = useState<PendingPlanChange | null>(null)
   const [isScheduleSetupOpen, setIsScheduleSetupOpen] = useState(false)
@@ -292,13 +337,13 @@ function App() {
     applyConfirmationToggle(id)
   }
   const applyDurationSelection = (id: string, value: string) => {
-    const durationDays = value ? Number(value) : undefined
+    const durationDays = value ? Number(value) : null
     const nextEntries = prescriptionEntries.map((entry) => {
       if (entry.id !== id) return entry
-      const updatedEntry = { ...entry }
-      if (durationDays === undefined) delete updatedEntry.durationDays
-      else updatedEntry.durationDays = durationDays
-      return updatedEntry
+      return {
+        ...entry,
+        schedule: { ...entry.schedule, durationDays },
+      }
     })
     setPrescriptionEntries(nextEntries)
     setScheduleEvents([])
@@ -323,19 +368,23 @@ function App() {
   }
   const allItemsConfirmed = confirmedItems.length === prescriptionEntries.length
   const scheduleReady = prescriptionEntries.every((entry) => {
-    const rule = getScheduleRule(entry.detail, entry.durationDays)
-    return rule.intervalHours !== null
+    const rule = getScheduleRule(entry.schedule)
+    return hasValidDoseAmount(entry.schedule)
+      && rule.intervalHours !== null
       && rule.totalDoses !== null
       && rule.totalDoses > 0
       && Boolean(firstDoseTimes[entry.id])
   })
   const scheduleBlockers = prescriptionEntries.flatMap((entry) => {
-    const rule = getScheduleRule(entry.detail, entry.durationDays)
+    const rule = getScheduleRule(entry.schedule)
+    if (!hasValidDoseAmount(entry.schedule)) {
+      return [`Completa la cantidad y unidad de ${entry.name} tal como aparecen en la receta.`]
+    }
     if (rule.durationRange && rule.totalDoses === null) {
       return [`Elige entre ${rule.durationRange.min} y ${rule.durationRange.max} días para ${entry.name}.`]
     }
     if (rule.intervalHours === null || rule.totalDoses === null || rule.totalDoses <= 0) {
-      return [`Corrige la frecuencia o duración de ${entry.name}.`]
+      return [`Completa el intervalo y la duración de ${entry.name} tal como aparecen en la receta.`]
     }
     return firstDoseTimes[entry.id]
       ? []
@@ -346,7 +395,7 @@ function App() {
     const nextFirstDoseTimes = { ...firstDoseTimes }
     delete nextFirstDoseTimes[entry.id]
     setEditingEntryId(entry.id)
-    setEditValues({ name: entry.name, detail: entry.detail })
+    setEditValues(getPrescriptionEditValues(entry))
     setEditError('')
     setScheduleEvents([])
     setFirstDoseTimes(nextFirstDoseTimes)
@@ -372,6 +421,49 @@ function App() {
       return
     }
 
+    const doseMin = parsePositiveNumber(editValues.doseMin)
+    const doseMax = editValues.doseMax.trim()
+      ? parsePositiveNumber(editValues.doseMax)
+      : doseMin
+    const intervalHours = parsePositiveNumber(editValues.intervalHours)
+    const durationDays = editValues.durationDays.trim()
+      ? parsePositiveNumber(editValues.durationDays)
+      : null
+    const durationMin = editValues.durationMin.trim()
+      ? parsePositiveNumber(editValues.durationMin)
+      : null
+    const durationMax = editValues.durationMax.trim()
+      ? parsePositiveNumber(editValues.durationMax)
+      : null
+    const hasDurationRange = editValues.durationMin.trim() !== '' || editValues.durationMax.trim() !== ''
+    let durationRange: { min: number; max: number } | null = null
+
+    if (doseMin === null || doseMax === null || doseMax < doseMin || !editValues.doseUnit.trim()) {
+      setEditError('Indica una cantidad válida y su unidad tal como aparecen en la receta.')
+      return
+    }
+    if (intervalHours === null || !Number.isInteger(intervalHours)) {
+      setEditError('Indica el intervalo en horas tal como aparece en la receta.')
+      return
+    }
+    if (hasDurationRange) {
+      if (
+        durationDays !== null
+        || durationMin === null
+        || durationMax === null
+        || !Number.isInteger(durationMin)
+        || !Number.isInteger(durationMax)
+        || durationMax < durationMin
+      ) {
+        setEditError('Completa una duración fija o un rango válido de días, no ambos.')
+        return
+      }
+      durationRange = { min: durationMin, max: durationMax }
+    } else if (durationDays === null || !Number.isInteger(durationDays)) {
+      setEditError('Indica la duración en días tal como aparece en la receta.')
+      return
+    }
+
     const nextEntries = prescriptionEntries.map((entry) =>
       entry.id === entryId
         ? {
@@ -379,6 +471,17 @@ function App() {
             name: editValues.name.trim(),
             detail: editValues.detail.trim(),
             uncertainty: 'Corrección guardada; revisa de nuevo que coincida con la receta original.',
+            schedule: {
+              dose: {
+                min: doseMin,
+                max: doseMax,
+                unit: editValues.doseUnit.trim(),
+              },
+              route: editValues.route.trim(),
+              intervalHours,
+              durationDays: hasDurationRange ? null : durationDays,
+              durationRange,
+            },
           }
         : entry,
     )
@@ -400,7 +503,7 @@ function App() {
 
     const generated: ScheduledDose[] = []
     for (const entry of prescriptionEntries) {
-      const rule = getScheduleRule(entry.detail, entry.durationDays)
+      const rule = getScheduleRule(entry.schedule)
       const firstDose = new Date(firstDoseTimes[entry.id])
       if (
         rule.intervalHours === null
@@ -575,142 +678,26 @@ function App() {
     setScheduleAdjustmentConfirmed(false)
     setScheduleAdjustmentError('')
   }
-  const renderDoseCard = (dose: ScheduledDose, compact = false, isNextDose = false) => (
-    <article
-      className={`dose-card dose-card-${dose.status}${compact ? ' dose-card-compact' : ''}${isNextDose ? ' dose-card-next' : ''}`}
-      key={dose.id}
-      title={`${dose.medicationName} · ${dose.instructions}`}
-    >
-      <div className="dose-card-heading">
-        <time dateTime={dose.scheduledAt.toISOString()}>
-          {formatScheduleTime(dose.scheduledAt, compact ? undefined : 'EEE d MMM')}
-        </time>
-        <span className={`dose-status dose-status-${dose.status}`}>
-          {compact
-            ? dose.status === 'given' ? 'Dada' : dose.status === 'skipped' ? 'Omitida' : 'Pendiente'
-            : dose.status === 'given' ? 'Administrada' : dose.status === 'skipped' ? 'Omitida' : 'Por dar'}
-        </span>
-        {isNextDose && <span className="dose-priority-label">Siguiente</span>}
-      </div>
-      <strong>{dose.medicationName}</strong>
-      {dose.status === 'given' && dose.administeredAt && (
-        <span className={`dose-actual-time${compact ? ' is-compact' : ''}`}>
-          <CheckCircle2 size={12} />
-          {compact
-            ? 'Real'
-            : isSameDay(dose.administeredAt, dose.scheduledAt) ? 'Administrada' : 'Administrada el'}
-          {' '}{formatScheduleTime(
-            dose.administeredAt,
-            isSameDay(dose.administeredAt, dose.scheduledAt) ? undefined : 'd MMM',
-          )}
-        </span>
-      )}
-      {!compact && <span className="dose-instructions">{dose.instructions}</span>}
-      <div className="dose-card-actions">
-        {dose.status === 'pending' ? (
-          <>
-            <button
-              type="button"
-              className="dose-action-primary"
-              aria-label={`Marcar ${dose.medicationName} como administrada`}
-              onClick={() => updateDoseStatus(dose.id, 'given')}
-            >
-              Ya la di
-            </button>
-            <button
-              type="button"
-              className="dose-action-secondary"
-              aria-label={`Omitir toma de ${dose.medicationName}`}
-              onClick={() => updateDoseStatus(dose.id, 'skipped')}
-            >
-              Omitir
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="dose-action-secondary"
-            aria-label={`Volver a marcar ${dose.medicationName} por dar`}
-            onClick={() => updateDoseStatus(dose.id, 'pending')}
-          >
-            Deshacer
-          </button>
-        )}
-      </div>
-    </article>
-  )
-
   return (
     <>
       <a className="skip-link" href="#main-content">Ir al contenido principal</a>
       <div className={`app-shell ${isSidebarCollapsed ? 'is-sidebar-collapsed' : ''} ${scheduleEvents.length > 0 ? 'has-active-plan' : 'is-setup'}`}>
-      <aside
-        className={`sidebar ${isSidebarCollapsed ? 'is-collapsed' : ''}`}
-        id="primary-sidebar"
-      >
-        <div className="brand-wrap">
-          <div className="brand-mark">M</div>
-          <div>
-            <p className="eyebrow">Seguimiento familiar</p>
-            <h2>MediPlan</h2>
-          </div>
-        </div>
-
-        <nav className="nav-menu" aria-label="Navegación principal">
-          <button
-            type="button"
-            className={`nav-item ${scheduleView !== 'list' ? 'active' : ''}`}
-            aria-current={scheduleView !== 'list' ? 'page' : undefined}
-            aria-label="Calendario"
-            title={isSidebarCollapsed ? 'Calendario' : undefined}
-            onClick={() => {
-              setScheduleView('today')
-              document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-            }}
-          >
-            <CalendarDays size={18} />
-            <span className="nav-label">Calendario</span>
-          </button>
-          <button
-            type="button"
-            className={`nav-item ${isPrescriptionReviewOpen ? 'active' : ''}`}
-            aria-label="Recetas"
-            aria-haspopup="dialog"
-            aria-expanded={isPrescriptionReviewOpen}
-            title={isSidebarCollapsed ? 'Recetas' : undefined}
-            onClick={openPrescriptionReview}
-          >
-            <FileText size={18} />
-            <span className="nav-label">Recetas</span>
-          </button>
-          {scheduleEvents.length > 0 && (
-            <button
-              type="button"
-              className={`nav-item ${scheduleView === 'list' ? 'active' : ''}`}
-              aria-current={scheduleView === 'list' ? 'page' : undefined}
-              aria-label="Lista"
-              title={isSidebarCollapsed ? 'Lista' : undefined}
-              onClick={() => {
-                setScheduleView('list')
-                document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-              }}
-            >
-              <List size={18} />
-              <span className="nav-label">Lista</span>
-            </button>
-          )}
-        </nav>
-
-        <div className="mini-card card-soft">
-          <p className="label">{scheduleEvents.length > 0 ? 'Seguimiento' : 'Siguiente paso'}</p>
-          <h3>{scheduleEvents.length > 0 ? `${statusCounts.pending} por dar` : 'Revisar receta'}</h3>
-          <span>
-            {scheduleEvents.length > 0
-              ? 'Marca cada toma cuando la administres.'
-              : 'Confirma la lectura antes de crear un plan.'}
-          </span>
-        </div>
-      </aside>
+      <Sidebar
+        collapsed={isSidebarCollapsed}
+        scheduleView={scheduleView}
+        hasActivePlan={scheduleEvents.length > 0}
+        pendingCount={statusCounts.pending}
+        isPrescriptionReviewOpen={isPrescriptionReviewOpen}
+        onToday={() => {
+          setScheduleView('today')
+          document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+        onList={() => {
+          setScheduleView('list')
+          document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+        onOpenReview={openPrescriptionReview}
+      />
 
       <main className="main-panel" id="main-content">
         <header className="topbar">
@@ -913,7 +900,10 @@ function App() {
 
                 <div className="schedule-adjustment-list">
                   {adjustableDoseGroups.map((series, index) => {
-                    const intervalHours = getScheduleRule(series.instructions).intervalHours
+                    const medication = prescriptionEntries.find((entry) =>
+                      series.doses[0].id.startsWith(`${entry.id}-`),
+                    )
+                    const intervalHours = medication?.schedule.intervalHours ?? null
                     const selectedTime = scheduleAdjustmentTimes[series.key]
                     const previewStart = selectedTime ? new Date(selectedTime) : null
                     const previewTimes = previewStart && Number.isFinite(previewStart.getTime())
@@ -1126,10 +1116,13 @@ function App() {
                     </div>
                     {todaysDoses.length > 0 ? (
                       <div className="dose-list-view today-dose-list">
-                        {todaysDoses.map((dose) => renderDoseCard(
-                          dose,
-                          false,
-                          dose.id === nextTodayDose?.id,
+                        {todaysDoses.map((dose) => (
+                          <DoseCard
+                            key={dose.id}
+                            dose={dose}
+                            isNextDose={dose.id === nextTodayDose?.id}
+                            onUpdateStatus={updateDoseStatus}
+                          />
                         ))}
                       </div>
                     ) : (
@@ -1177,7 +1170,13 @@ function App() {
                     </div>
                     <div className="dose-list-view">
                       {filteredScheduleEvents.length > 0
-                        ? filteredScheduleEvents.map((dose) => renderDoseCard(dose))
+                        ? filteredScheduleEvents.map((dose) => (
+                            <DoseCard
+                              key={dose.id}
+                              dose={dose}
+                              onUpdateStatus={updateDoseStatus}
+                            />
+                          ))
                         : <p className="dose-filter-empty">No hay tomas en este estado.</p>}
                     </div>
                   </>
@@ -1215,7 +1214,13 @@ function App() {
                       </div>
                       {selectedDayDoses.length > 0 ? (
                         <div className="dose-list-view">
-                          {selectedDayDoses.map((dose) => renderDoseCard(dose))}
+                          {selectedDayDoses.map((dose) => (
+                            <DoseCard
+                              key={dose.id}
+                              dose={dose}
+                              onUpdateStatus={updateDoseStatus}
+                            />
+                          ))}
                         </div>
                       ) : (
                         <div className="today-empty-state">
@@ -1259,56 +1264,22 @@ function App() {
           </div>
         </section>
       </main>
-      <nav
-        className={`mobile-nav${scheduleEvents.length === 0 ? ' is-setup' : ''}`}
-        aria-label="Navegación móvil"
-      >
-        <button
-          type="button"
-          className={`mobile-nav-item ${scheduleView === 'today' ? 'is-active' : ''}`}
-          aria-current={scheduleView === 'today' ? 'page' : undefined}
-          onClick={() => {
-            setScheduleView('today')
-            document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-          }}
-        >
-          <CalendarDays size={20} />
-          <span>Hoy</span>
-        </button>
-        <button
-          type="button"
-          className={`mobile-nav-item ${isPrescriptionReviewOpen ? 'is-active' : ''}`}
-          aria-haspopup="dialog"
-          aria-expanded={isPrescriptionReviewOpen}
-          onClick={openPrescriptionReview}
-        >
-          <FileText size={20} />
-          <span>Recetas</span>
-        </button>
-        {scheduleEvents.length > 0 && (
-          <button
-            type="button"
-            className={`mobile-nav-item ${scheduleView === 'list' ? 'is-active' : ''}`}
-            aria-current={scheduleView === 'list' ? 'page' : undefined}
-            onClick={() => {
-              setScheduleView('list')
-              document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-            }}
-          >
-            <List size={20} />
-            <span>Lista</span>
-          </button>
-        )}
-        <button
-          type="button"
-          className={`mobile-nav-item ${!isSidebarCollapsed ? 'is-menu-open' : ''}`}
-          aria-expanded={!isSidebarCollapsed}
-          onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
-        >
-          <Menu size={20} />
-          <span>Más</span>
-        </button>
-      </nav>
+      <MobileNavigation
+        scheduleView={scheduleView}
+        hasActivePlan={scheduleEvents.length > 0}
+        isMenuOpen={!isSidebarCollapsed}
+        isPrescriptionReviewOpen={isPrescriptionReviewOpen}
+        onToday={() => {
+          setScheduleView('today')
+          document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+        onList={() => {
+          setScheduleView('list')
+          document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+        }}
+        onOpenReview={openPrescriptionReview}
+        onToggleMenu={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+      />
       {isPrescriptionReviewOpen && (
         <div
           className="modal-backdrop"
@@ -1411,8 +1382,97 @@ function App() {
                             value={editValues.detail}
                             onChange={(event) => setEditValues((current) => ({ ...current, detail: event.target.value }))}
                           />
+                          <p className="edit-help">La indicación original se conserva. Completa los campos estructurados copiando la receta; MediPlan no los interpreta automáticamente.</p>
+                          <div className="prescription-schedule-fields">
+                            <label htmlFor={`dose-min-${item.id}`}>
+                              Cantidad mínima
+                              <input
+                                id={`dose-min-${item.id}`}
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={editValues.doseMin}
+                                onChange={(event) => setEditValues((current) => ({ ...current, doseMin: event.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label htmlFor={`dose-max-${item.id}`}>
+                              Cantidad máxima (si aplica)
+                              <input
+                                id={`dose-max-${item.id}`}
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={editValues.doseMax}
+                                onChange={(event) => setEditValues((current) => ({ ...current, doseMax: event.target.value }))}
+                              />
+                            </label>
+                            <label htmlFor={`dose-unit-${item.id}`}>
+                              Unidad (ml, gotas, etc.)
+                              <input
+                                id={`dose-unit-${item.id}`}
+                                value={editValues.doseUnit}
+                                onChange={(event) => setEditValues((current) => ({ ...current, doseUnit: event.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label htmlFor={`dose-route-${item.id}`}>
+                              Vía (solo si está indicada)
+                              <input
+                                id={`dose-route-${item.id}`}
+                                value={editValues.route}
+                                onChange={(event) => setEditValues((current) => ({ ...current, route: event.target.value }))}
+                              />
+                            </label>
+                            <label htmlFor={`dose-interval-${item.id}`}>
+                              Intervalo (horas)
+                              <input
+                                id={`dose-interval-${item.id}`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editValues.intervalHours}
+                                onChange={(event) => setEditValues((current) => ({ ...current, intervalHours: event.target.value }))}
+                                required
+                              />
+                            </label>
+                            <label htmlFor={`dose-duration-${item.id}`}>
+                              Duración fija (días)
+                              <input
+                                id={`dose-duration-${item.id}`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editValues.durationDays}
+                                onChange={(event) => setEditValues((current) => ({ ...current, durationDays: event.target.value }))}
+                                required={editValues.durationMin === '' && editValues.durationMax === ''}
+                              />
+                            </label>
+                            <label htmlFor={`dose-duration-min-${item.id}`}>
+                              Duración mínima (si es un rango)
+                              <input
+                                id={`dose-duration-min-${item.id}`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editValues.durationMin}
+                                onChange={(event) => setEditValues((current) => ({ ...current, durationMin: event.target.value }))}
+                              />
+                            </label>
+                            <label htmlFor={`dose-duration-max-${item.id}`}>
+                              Duración máxima (si es un rango)
+                              <input
+                                id={`dose-duration-max-${item.id}`}
+                                type="number"
+                                min="1"
+                                step="1"
+                                value={editValues.durationMax}
+                                onChange={(event) => setEditValues((current) => ({ ...current, durationMax: event.target.value }))}
+                              />
+                            </label>
+                          </div>
                           {editError && <p className="file-error" role="alert">{editError}</p>}
-                          <p className="edit-help">Copia la indicación de la receta; no calcules ni supongas lo que no se alcanza a leer.</p>
+                          <p className="edit-help">No calcules ni supongas lo que no se alcanza a leer. Si hay duda, consulta al médico o farmacéutico.</p>
                           <div className="edit-actions">
                             <button
                               type="button"
@@ -1489,11 +1549,17 @@ function App() {
                   )}
                 </div>
                 {prescriptionEntries.map((item) => {
-                  const rule = getScheduleRule(item.detail, item.durationDays)
+                  const rule = getScheduleRule(item.schedule)
                   const durationRange = rule.durationRange
-                  const ruleIsValid = rule.intervalHours !== null
+                  const ruleIsValid = hasValidDoseAmount(item.schedule)
+                    && rule.intervalHours !== null
                     && rule.totalDoses !== null
                     && rule.totalDoses > 0
+                  const doseLabel = item.schedule.dose.min !== null
+                    ? `${item.schedule.dose.min === item.schedule.dose.max
+                      ? item.schedule.dose.min
+                      : `${item.schedule.dose.min}–${item.schedule.dose.max}`} ${item.schedule.dose.unit}`
+                    : ''
                   const firstDoseTime = firstDoseTimes[item.id]
                     ? new Date(firstDoseTimes[item.id])
                     : null
@@ -1518,7 +1584,7 @@ function App() {
                           </label>
                           <select
                             id={`duration-${item.id}`}
-                            value={item.durationDays ?? ''}
+                            value={item.schedule.durationDays ?? ''}
                             onChange={(event) => {
                               updateDurationSelection(item.id, event.target.value)
                               setScheduleError('')
@@ -1536,6 +1602,7 @@ function App() {
                       )}
                       {rule.intervalHours !== null && (
                         <p className="schedule-rule">
+                          {doseLabel && `${doseLabel} · `}
                           {rule.totalDoses !== null
                             ? `${rule.totalDoses} ${rule.totalDoses === 1 ? 'toma' : 'tomas'} · cada ${rule.intervalHours} horas`
                             : `Cada ${rule.intervalHours} horas`}
@@ -1556,7 +1623,9 @@ function App() {
                             }}
                           />
                         </>
-                      ) : durationRange && rule.intervalHours !== null ? (
+                      ) : hasValidDoseAmount(item.schedule)
+                        && durationRange
+                        && rule.intervalHours !== null ? (
                         <p className="duration-choice-help">Elige la duración para calcular cuántas tomas aparecerán.</p>
                       ) : (
                         <div className="schedule-blocked">
