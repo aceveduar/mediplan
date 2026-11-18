@@ -303,10 +303,10 @@ function App() {
   const [scheduleAdjustmentTimes, setScheduleAdjustmentTimes] = useState<Record<string, string>>({})
   const [scheduleAdjustmentConfirmed, setScheduleAdjustmentConfirmed] = useState(false)
   const [scheduleAdjustmentError, setScheduleAdjustmentError] = useState('')
-  const [visibleWeekStart, setVisibleWeekStart] = useState(() => startOfWeek(
-    initialData.scheduleEvents[0]?.scheduledAt ?? new Date(),
-    { weekStartsOn: 1 },
-  ))
+  const [visibleWeekStart, setVisibleWeekStart] = useState(
+    () => startOfWeek(currentTime, { weekStartsOn: 1 }),
+  )
+  const [selectedCalendarDay, setSelectedCalendarDay] = useState(() => currentTime)
   const [scheduleError, setScheduleError] = useState('')
   const [persistenceError, setPersistenceError] = useState(initialData.error)
   const [canPersist, setCanPersist] = useState(!initialData.error)
@@ -579,6 +579,7 @@ function App() {
     generated.sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
     setScheduleEvents(generated)
     setVisibleWeekStart(startOfWeek(generated[0].scheduledAt, { weekStartsOn: 1 }))
+    setSelectedCalendarDay(generated[0].scheduledAt)
     persistAppState({ scheduleEvents: generated })
     setScheduleError('')
     setIsScheduleSetupOpen(false)
@@ -609,6 +610,9 @@ function App() {
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0)
   }
   const calendarDays = Array.from({ length: 7 }, (_, index) => addDays(visibleWeekStart, index))
+  const selectedDayDoses = scheduleEvents
+    .filter((dose) => isSameDay(dose.scheduledAt, selectedCalendarDay))
+    .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
   const todaysDoses = scheduleEvents
     .filter((dose) => isSameDay(dose.scheduledAt, currentTime))
     .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
@@ -1218,7 +1222,11 @@ function App() {
                       <button
                         type="button"
                         aria-label="Semana anterior"
-                        onClick={() => setVisibleWeekStart((date) => subWeeks(date, 1))}
+                        onClick={() => {
+                          const previousWeek = subWeeks(visibleWeekStart, 1)
+                          setVisibleWeekStart(previousWeek)
+                          setSelectedCalendarDay(previousWeek)
+                        }}
                       >
                         <ChevronLeft size={18} />
                       </button>
@@ -1228,14 +1236,21 @@ function App() {
                       <button
                         type="button"
                         className="week-today-button"
-                        onClick={() => setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))}
+                        onClick={() => {
+                          setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                          setSelectedCalendarDay(currentTime)
+                        }}
                       >
                         Hoy
                       </button>
                       <button
                         type="button"
                         aria-label="Semana siguiente"
-                        onClick={() => setVisibleWeekStart((date) => addWeeks(date, 1))}
+                        onClick={() => {
+                          const nextWeek = addWeeks(visibleWeekStart, 1)
+                          setVisibleWeekStart(nextWeek)
+                          setSelectedCalendarDay(nextWeek)
+                        }}
                       >
                         <ChevronRight size={18} />
                       </button>
@@ -1272,6 +1287,7 @@ function App() {
                           className="review-button"
                           onClick={() => {
                             setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                            setSelectedCalendarDay(currentTime)
                             setScheduleView('calendar')
                           }}
                         >
@@ -1310,24 +1326,61 @@ function App() {
                   </>
                 )}
                 {scheduleView === 'calendar' && (
-                  <div className="calendar-week-grid" aria-label="Tomas de la semana">
-                    {calendarDays.map((day) => {
-                      const dayDoses = scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, day))
-                      return (
-                        <section className={`calendar-day ${isSameDay(day, currentTime) ? 'is-today' : ''}`} key={day.toISOString()}>
-                          <header>
+                  <>
+                    <div className="week-picker" role="group" aria-label="Seleccionar día de la semana">
+                      {calendarDays.map((day) => {
+                        const dayDoses = scheduleEvents.filter((dose) => isSameDay(dose.scheduledAt, day))
+                        const isSelected = isSameDay(day, selectedCalendarDay)
+                        const isToday = isSameDay(day, currentTime)
+                        return (
+                          <button
+                            type="button"
+                            className={`week-day-button${isSelected ? ' is-selected' : ''}${isToday ? ' is-today' : ''}`}
+                            aria-pressed={isSelected}
+                            aria-label={`${format(day, 'EEEE d MMMM', { locale: es })}, ${dayDoses.length} ${dayDoses.length === 1 ? 'toma' : 'tomas'}`}
+                            onClick={() => setSelectedCalendarDay(day)}
+                            key={day.toISOString()}
+                          >
                             <span>{format(day, 'EEE', { locale: es })}</span>
                             <strong>{format(day, 'd')}</strong>
-                          </header>
-                          <div className="calendar-day-doses">
-                            {dayDoses.length > 0
-                              ? dayDoses.map((dose) => renderDoseCard(dose, true))
-                              : <span className="no-doses">Sin tomas</span>}
+                            <small>{dayDoses.length === 0 ? 'Sin tomas' : `${dayDoses.length} ${dayDoses.length === 1 ? 'toma' : 'tomas'}`}</small>
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <section className="selected-day-agenda" aria-label={`Tomas de ${format(selectedCalendarDay, 'EEEE d MMMM', { locale: es })}`}>
+                      <div className="today-view-heading">
+                        <div>
+                          <p className="eyebrow">Agenda del día</p>
+                          <h4>{format(selectedCalendarDay, 'EEEE d MMMM', { locale: es })}</h4>
+                        </div>
+                        <span>{selectedDayDoses.length} {selectedDayDoses.length === 1 ? 'toma' : 'tomas'}</span>
+                      </div>
+                      {selectedDayDoses.length > 0 ? (
+                        <div className="dose-list-view">
+                          {selectedDayDoses.map((dose) => renderDoseCard(dose))}
+                        </div>
+                      ) : (
+                        <div className="today-empty-state">
+                          <CalendarDays size={20} />
+                          <div>
+                            <strong>No hay tomas para este día</strong>
+                            <span>Elige otra fecha o vuelve a la semana actual.</span>
                           </div>
-                        </section>
-                      )
-                    })}
-                  </div>
+                          <button
+                            type="button"
+                            className="review-button"
+                            onClick={() => {
+                              setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                              setSelectedCalendarDay(currentTime)
+                            }}
+                          >
+                            Ir a hoy
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  </>
                 )}
                 <button type="button" className="export-json-button" onClick={downloadScheduleJson}>
                   Descargar respaldo JSON
