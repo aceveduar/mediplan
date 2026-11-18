@@ -25,7 +25,6 @@ import {
   Sparkles,
   Sun,
   Upload,
-  X,
 } from 'lucide-react'
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -36,6 +35,10 @@ import {
   type PrescriptionEditValues,
 } from './components/PrescriptionEditForm'
 import { PrescriptionReviewList } from './components/PrescriptionReviewList'
+import {
+  PrescriptionReviewDialog,
+  type PendingPlanChange,
+} from './components/PrescriptionReviewDialog'
 import { ScheduleSetup } from './components/ScheduleSetup'
 
 const recipeAnalysis = {
@@ -44,11 +47,6 @@ const recipeAnalysis = {
 
 type ScheduleView = 'today' | 'list' | 'calendar'
 type DoseFilter = 'all' | DoseStatus
-type PendingPlanChange =
-  | { type: 'edit'; entry: PrescriptionEntry }
-  | { type: 'confirmation'; entryId: string }
-  | { type: 'duration'; entryId: string; value: string }
-  | { type: 'regenerate' }
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
@@ -1237,78 +1235,15 @@ function App() {
         onToggleMenu={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
       />
       {isPrescriptionReviewOpen && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) closePrescriptionReview()
-          }}
+        <PrescriptionReviewDialog
+          isScheduleSetupOpen={isScheduleSetupOpen}
+          pendingPlanChange={pendingPlanChange}
+          modalRef={reviewModalRef}
+          closeButtonRef={reviewCloseRef}
+          onClose={closePrescriptionReview}
+          onCancelPlanChange={() => setPendingPlanChange(null)}
+          onConfirmPlanChange={confirmPendingPlanChange}
         >
-          <section
-            ref={reviewModalRef}
-            className="review-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="review-title"
-          >
-            <div className="modal-heading">
-              <div>
-                <p className="eyebrow">
-                  {isScheduleSetupOpen ? 'Paso 2 · Inicio del tratamiento' : 'Paso 1 · Revisar la receta'}
-                </p>
-                <h2 id="review-title">
-                  {isScheduleSetupOpen ? '¿Cuándo empieza cada medicamento?' : 'Revisa los medicamentos'}
-                </h2>
-              </div>
-              <button
-                ref={reviewCloseRef}
-                type="button"
-                className="modal-close"
-                aria-label="Cerrar revisión"
-                onClick={closePrescriptionReview}
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="safety-notice" role="alert">
-              <AlertTriangle size={20} />
-              <p>
-                {isScheduleSetupOpen
-                  ? 'Indica la fecha y hora de la primera toma tal como te la indicó el profesional. Las siguientes se espaciarán según la frecuencia revisada.'
-                  : <>Compara cada indicación con la receta original. Pulsa <strong>“Coincide”</strong> solo si puedes confirmar claramente el medicamento y sus instrucciones. Si algo no se entiende, déjalo sin marcar y consúltalo con el médico o farmacéutico.</>}
-              </p>
-            </div>
-
-            {pendingPlanChange && (
-              <div className="plan-change-warning" role="alert">
-                  <AlertTriangle size={18} />
-                  <div>
-                    <strong>Se reemplazará el calendario activo</strong>
-                    <p>
-                      {pendingPlanChange.type === 'regenerate'
-                        ? 'Se perderá el registro de las tomas ya marcadas y todas volverán a estado pendiente.'
-                        : 'Se borrarán las tomas programadas y sus estados. Después tendrás que revisar las indicaciones y crear un calendario nuevo.'}
-                    </p>
-                    <div className="plan-change-warning-actions">
-                      <button
-                        type="button"
-                        className="cancel-edit-button"
-                        onClick={() => setPendingPlanChange(null)}
-                      >
-                        Conservar el calendario
-                      </button>
-                      <button
-                        type="button"
-                        className="save-edit-button"
-                        onClick={confirmPendingPlanChange}
-                      >
-                        {pendingPlanChange.type === 'regenerate' ? 'Recrear calendario' : 'Eliminarlo y continuar'}
-                      </button>
-                    </div>
-                  </div>
-              </div>
-            )}
-
             {!isScheduleSetupOpen ? (
               <PrescriptionReviewList
                 entries={prescriptionEntries}
@@ -1352,19 +1287,7 @@ function App() {
                 onCreateSchedule={() => generateSchedule()}
               />
             )}
-
-            <div className="modal-footer">
-              <span>Se guarda automáticamente como JSON en este navegador; no se sube a internet.</span>
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={closePrescriptionReview}
-              >
-                Entendido
-              </button>
-            </div>
-          </section>
-        </div>
+        </PrescriptionReviewDialog>
       )}
       </div>
     </>
