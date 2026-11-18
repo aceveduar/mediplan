@@ -33,6 +33,10 @@ import { es } from 'date-fns/locale'
 import { DoseCard } from './components/DoseCard'
 import { DoseTimePreview } from './components/DoseTimePreview'
 import { MobileNavigation, Sidebar } from './components/Navigation'
+import {
+  PrescriptionEditForm,
+  type PrescriptionEditValues,
+} from './components/PrescriptionEditForm'
 
 const recipeAnalysis = {
   patient: 'Amelia',
@@ -56,19 +60,6 @@ type AdjustableDoseSeries = {
   instructions: string
   doses: ScheduledDose[]
   lockedCount: number
-}
-
-type PrescriptionEditValues = {
-  name: string
-  detail: string
-  doseMin: string
-  doseMax: string
-  doseUnit: string
-  route: string
-  intervalHours: string
-  durationDays: string
-  durationMin: string
-  durationMax: string
 }
 
 const emptyPrescriptionEditValues: PrescriptionEditValues = {
@@ -1332,126 +1323,15 @@ function App() {
                     <article className="prescription-item" key={item.id}>
                       <div className="prescription-icon"><Pill size={18} /></div>
                       {editingEntryId === item.id ? (
-                        <form className="prescription-edit-form" onSubmit={(event) => saveCorrection(event, item.id)}>
-                          <label htmlFor={`medicine-name-${item.id}`}>Nombre del medicamento</label>
-                          <input
-                            id={`medicine-name-${item.id}`}
-                            value={editValues.name}
-                            onChange={(event) => setEditValues((current) => ({ ...current, name: event.target.value }))}
-                            autoFocus
-                          />
-                          <label htmlFor={`medicine-detail-${item.id}`}>Dosis e indicaciones tal como aparecen</label>
-                          <textarea
-                            id={`medicine-detail-${item.id}`}
-                            rows={3}
-                            value={editValues.detail}
-                            onChange={(event) => setEditValues((current) => ({ ...current, detail: event.target.value }))}
-                          />
-                          <p className="edit-help">La indicación original se conserva. Completa los campos estructurados copiando la receta; MediPlan no los interpreta automáticamente.</p>
-                          <div className="prescription-schedule-fields">
-                            <label htmlFor={`dose-min-${item.id}`}>
-                              Cantidad mínima
-                              <input
-                                id={`dose-min-${item.id}`}
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={editValues.doseMin}
-                                onChange={(event) => setEditValues((current) => ({ ...current, doseMin: event.target.value }))}
-                                required
-                              />
-                            </label>
-                            <label htmlFor={`dose-max-${item.id}`}>
-                              Cantidad máxima (si aplica)
-                              <input
-                                id={`dose-max-${item.id}`}
-                                type="number"
-                                min="0"
-                                step="any"
-                                value={editValues.doseMax}
-                                onChange={(event) => setEditValues((current) => ({ ...current, doseMax: event.target.value }))}
-                              />
-                            </label>
-                            <label htmlFor={`dose-unit-${item.id}`}>
-                              Unidad (ml, gotas, etc.)
-                              <input
-                                id={`dose-unit-${item.id}`}
-                                value={editValues.doseUnit}
-                                onChange={(event) => setEditValues((current) => ({ ...current, doseUnit: event.target.value }))}
-                                required
-                              />
-                            </label>
-                            <label htmlFor={`dose-route-${item.id}`}>
-                              Vía (solo si está indicada)
-                              <input
-                                id={`dose-route-${item.id}`}
-                                value={editValues.route}
-                                onChange={(event) => setEditValues((current) => ({ ...current, route: event.target.value }))}
-                              />
-                            </label>
-                            <label htmlFor={`dose-interval-${item.id}`}>
-                              Intervalo (horas)
-                              <input
-                                id={`dose-interval-${item.id}`}
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={editValues.intervalHours}
-                                onChange={(event) => setEditValues((current) => ({ ...current, intervalHours: event.target.value }))}
-                                required
-                              />
-                            </label>
-                            <label htmlFor={`dose-duration-${item.id}`}>
-                              Duración fija (días)
-                              <input
-                                id={`dose-duration-${item.id}`}
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={editValues.durationDays}
-                                onChange={(event) => setEditValues((current) => ({ ...current, durationDays: event.target.value }))}
-                                required={editValues.durationMin === '' && editValues.durationMax === ''}
-                              />
-                            </label>
-                            <label htmlFor={`dose-duration-min-${item.id}`}>
-                              Duración mínima (si es un rango)
-                              <input
-                                id={`dose-duration-min-${item.id}`}
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={editValues.durationMin}
-                                onChange={(event) => setEditValues((current) => ({ ...current, durationMin: event.target.value }))}
-                              />
-                            </label>
-                            <label htmlFor={`dose-duration-max-${item.id}`}>
-                              Duración máxima (si es un rango)
-                              <input
-                                id={`dose-duration-max-${item.id}`}
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={editValues.durationMax}
-                                onChange={(event) => setEditValues((current) => ({ ...current, durationMax: event.target.value }))}
-                              />
-                            </label>
-                          </div>
-                          {editError && <p className="file-error" role="alert">{editError}</p>}
-                          <p className="edit-help">No calcules ni supongas lo que no se alcanza a leer. Si hay duda, consulta al médico o farmacéutico.</p>
-                          <div className="edit-actions">
-                            <button
-                              type="button"
-                              className="cancel-edit-button"
-                              onClick={() => {
-                                setEditingEntryId(null)
-                                setEditError('')
-                              }}
-                            >
-                              Cancelar
-                            </button>
-                            <button type="submit" className="save-edit-button">Guardar corrección</button>
-                          </div>
-                        </form>
+                        <PrescriptionEditForm
+                          entryId={item.id}
+                          values={editValues}
+                          error={editError}
+                          setValues={setEditValues}
+                          setError={setEditError}
+                          onCancel={() => setEditingEntryId(null)}
+                          onSubmit={saveCorrection}
+                        />
                       ) : (
                         <>
                           <div>
