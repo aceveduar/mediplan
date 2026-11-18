@@ -1,16 +1,9 @@
 import { AlertTriangle } from 'lucide-react'
-import type { PrescriptionEntry, ScheduledDose } from '../domain/model'
+import type { PrescriptionEntry } from '../domain/model'
 import { getDoseTimePreview, getShiftedDoseTimes } from '../domain/schedule'
 import { formatScheduleTime } from '../domain/schedule'
+import type { AdjustableDoseSeries } from '../domain/scheduleAdjustment'
 import { DoseTimePreview } from './DoseTimePreview'
-
-export type AdjustableDoseSeries = {
-  key: string
-  medicationName: string
-  instructions: string
-  doses: ScheduledDose[]
-  lockedCount: number
-}
 
 type ScheduleAdjustmentPanelProps = {
   series: AdjustableDoseSeries[]

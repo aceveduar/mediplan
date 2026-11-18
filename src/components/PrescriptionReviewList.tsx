@@ -1,10 +1,8 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
 import { Pill } from 'lucide-react'
 import type { PrescriptionEntry } from '../domain/model'
-import {
-  PrescriptionEditForm,
-  type PrescriptionEditValues,
-} from './PrescriptionEditForm'
+import type { PrescriptionEditValues } from '../domain/prescriptionEditing'
+import { PrescriptionEditForm } from './PrescriptionEditForm'
 
 type PrescriptionReviewListProps = {
   entries: PrescriptionEntry[]

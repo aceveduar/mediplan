@@ -2,11 +2,20 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import './App.css'
 import type { PrescriptionEntry, ScheduledDose } from './domain/model'
 import {
+  buildPrescriptionCorrection,
+  emptyPrescriptionEditValues,
+  getPrescriptionEditValues,
+} from './domain/prescriptionEditing'
+import {
   getDoseSeriesKey,
-  getShiftedDoseTimes,
   formatScheduleTime,
   sortDosesForTracking,
 } from './domain/schedule'
+import {
+  calculateScheduleAdjustment,
+  toLocalDateTimeValue,
+  type AdjustableDoseSeries,
+} from './domain/scheduleAdjustment'
 import { toStoredAppData } from './storage/appData'
 import {
   CalendarDays,
@@ -19,19 +28,13 @@ import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'dat
 import { es } from 'date-fns/locale'
 import { DoseListView, type DoseFilter } from './components/DoseListView'
 import { MobileNavigation, Sidebar } from './components/Navigation'
-import {
-  type PrescriptionEditValues,
-} from './components/PrescriptionEditForm'
 import { PrescriptionReviewList } from './components/PrescriptionReviewList'
 import {
   PrescriptionReviewDialog,
   type PendingPlanChange,
 } from './components/PrescriptionReviewDialog'
 import { ScheduleSetup } from './components/ScheduleSetup'
-import {
-  ScheduleAdjustmentPanel,
-  type AdjustableDoseSeries,
-} from './components/ScheduleAdjustmentPanel'
+import { ScheduleAdjustmentPanel } from './components/ScheduleAdjustmentPanel'
 import { TodayScheduleView } from './components/TodayScheduleView'
 import { WeekScheduleView } from './components/WeekScheduleView'
 import { PrescriptionFileAttachment } from './components/PrescriptionFileAttachment'
@@ -47,43 +50,6 @@ type ScheduleView = 'today' | 'list' | 'calendar'
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
-}
-
-const emptyPrescriptionEditValues: PrescriptionEditValues = {
-  name: '',
-  detail: '',
-  doseMin: '',
-  doseMax: '',
-  doseUnit: '',
-  route: '',
-  intervalHours: '',
-  durationDays: '',
-  durationMin: '',
-  durationMax: '',
-}
-
-function getPrescriptionEditValues(entry: PrescriptionEntry): PrescriptionEditValues {
-  return {
-    name: entry.name,
-    detail: entry.detail,
-    doseMin: entry.schedule.dose.min?.toString() ?? '',
-    doseMax: entry.schedule.dose.max?.toString() ?? '',
-    doseUnit: entry.schedule.dose.unit,
-    route: entry.schedule.route,
-    intervalHours: entry.schedule.intervalHours?.toString() ?? '',
-    durationDays: entry.schedule.durationDays?.toString() ?? '',
-    durationMin: entry.schedule.durationRange?.min.toString() ?? '',
-    durationMax: entry.schedule.durationRange?.max.toString() ?? '',
-  }
-}
-
-function parsePositiveNumber(value: string) {
-  const parsed = Number(value)
-  return value.trim() !== '' && Number.isFinite(parsed) && parsed > 0 ? parsed : null
-}
-
-function toLocalDateTimeValue(date: Date) {
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
 }
 
 function App() {
@@ -245,74 +211,18 @@ function App() {
   }
   const saveCorrection = (event: ChangeEvent<HTMLFormElement>, entryId: string) => {
     event.preventDefault()
-    if (!editValues.name.trim() || !editValues.detail.trim()) {
-      setEditError('Completa el nombre y la indicación para guardar.')
+    const entry = prescriptionEntries.find((item) => item.id === entryId)
+    if (!entry) {
+      setEditError('No se encontró el medicamento que intentas corregir.')
       return
     }
-
-    const doseMin = parsePositiveNumber(editValues.doseMin)
-    const doseMax = editValues.doseMax.trim()
-      ? parsePositiveNumber(editValues.doseMax)
-      : doseMin
-    const intervalHours = parsePositiveNumber(editValues.intervalHours)
-    const durationDays = editValues.durationDays.trim()
-      ? parsePositiveNumber(editValues.durationDays)
-      : null
-    const durationMin = editValues.durationMin.trim()
-      ? parsePositiveNumber(editValues.durationMin)
-      : null
-    const durationMax = editValues.durationMax.trim()
-      ? parsePositiveNumber(editValues.durationMax)
-      : null
-    const hasDurationRange = editValues.durationMin.trim() !== '' || editValues.durationMax.trim() !== ''
-    let durationRange: { min: number; max: number } | null = null
-
-    if (doseMin === null || doseMax === null || doseMax < doseMin || !editValues.doseUnit.trim()) {
-      setEditError('Indica una cantidad válida y su unidad tal como aparecen en la receta.')
+    const result = buildPrescriptionCorrection(entry, editValues)
+    if (!result.valid) {
+      setEditError(result.error)
       return
     }
-    if (intervalHours === null || !Number.isInteger(intervalHours)) {
-      setEditError('Indica el intervalo en horas tal como aparece en la receta.')
-      return
-    }
-    if (hasDurationRange) {
-      if (
-        durationDays !== null
-        || durationMin === null
-        || durationMax === null
-        || !Number.isInteger(durationMin)
-        || !Number.isInteger(durationMax)
-        || durationMax < durationMin
-      ) {
-        setEditError('Completa una duración fija o un rango válido de días, no ambos.')
-        return
-      }
-      durationRange = { min: durationMin, max: durationMax }
-    } else if (durationDays === null || !Number.isInteger(durationDays)) {
-      setEditError('Indica la duración en días tal como aparece en la receta.')
-      return
-    }
-
     const nextEntries = prescriptionEntries.map((entry) =>
-      entry.id === entryId
-        ? {
-            ...entry,
-            name: editValues.name.trim(),
-            detail: editValues.detail.trim(),
-            uncertainty: 'Corrección guardada; revisa de nuevo que coincida con la receta original.',
-            schedule: {
-              dose: {
-                min: doseMin,
-                max: doseMax,
-                unit: editValues.doseUnit.trim(),
-              },
-              route: editValues.route.trim(),
-              intervalHours,
-              durationDays: hasDurationRange ? null : durationDays,
-              durationRange,
-            },
-          }
-        : entry,
+      entry.id === entryId ? result.entry : entry,
     )
     updatePrescriptionEntries(nextEntries)
     setEditingEntryId(null)
@@ -431,52 +341,18 @@ function App() {
     setIsScheduleAdjustmentOpen(true)
   }
   const saveScheduleAdjustment = () => {
-    if (!scheduleAdjustmentConfirmed) {
-      setScheduleAdjustmentError('Confirma que el horario alternativo fue indicado por el médico o farmacéutico.')
+    const result = calculateScheduleAdjustment(
+      scheduleEvents,
+      adjustableDoseGroups,
+      scheduleAdjustmentTimes,
+      scheduleAdjustmentConfirmed,
+    )
+    if (!result.valid) {
+      setScheduleAdjustmentError(result.error)
       return
     }
 
-    const now = Date.now()
-    const updatedTimes = new Map<string, Date>()
-    let hasChanges = false
-
-    for (const series of adjustableDoseGroups) {
-      if (series.lockedCount > 0) continue
-      const selectedTime = scheduleAdjustmentTimes[series.key]
-      if (selectedTime === toLocalDateTimeValue(series.doses[0].scheduledAt)) continue
-      const newFirstDose = new Date(selectedTime)
-      if (Number.isNaN(newFirstDose.getTime()) || newFirstDose.getTime() <= now) {
-        setScheduleAdjustmentError(`Elige una fecha futura para ${series.medicationName}.`)
-        return
-      }
-
-      const offset = newFirstDose.getTime() - series.doses[0].scheduledAt.getTime()
-      if (offset === 0) continue
-      hasChanges = true
-
-      const shiftedTimes = getShiftedDoseTimes(series.doses, newFirstDose)
-      for (const [index, dose] of series.doses.entries()) {
-        const scheduledAt = shiftedTimes[index]
-        if (scheduledAt.getTime() <= now) {
-          setScheduleAdjustmentError(`El nuevo horario de ${series.medicationName} deja una toma en el pasado.`)
-          return
-        }
-        updatedTimes.set(dose.id, scheduledAt)
-      }
-    }
-
-    if (!hasChanges) {
-      setScheduleAdjustmentError('Cambia al menos una fecha u hora futura para guardar el ajuste.')
-      return
-    }
-
-    const nextEvents = scheduleEvents
-      .map((dose) => {
-        const scheduledAt = updatedTimes.get(dose.id)
-        return scheduledAt ? { ...dose, scheduledAt } : dose
-      })
-      .sort((left, right) => left.scheduledAt.getTime() - right.scheduledAt.getTime())
-    updateScheduleEvents(nextEvents)
+    updateScheduleEvents(result.scheduleEvents)
     setIsScheduleAdjustmentOpen(false)
     setScheduleAdjustmentTimes({})
     setScheduleAdjustmentConfirmed(false)

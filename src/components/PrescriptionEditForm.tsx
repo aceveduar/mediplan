@@ -1,17 +1,5 @@
 import type { ChangeEvent, Dispatch, SetStateAction } from 'react'
-
-export type PrescriptionEditValues = {
-  name: string
-  detail: string
-  doseMin: string
-  doseMax: string
-  doseUnit: string
-  route: string
-  intervalHours: string
-  durationDays: string
-  durationMin: string
-  durationMax: string
-}
+import type { PrescriptionEditValues } from '../domain/prescriptionEditing'
 
 type PrescriptionEditFormProps = {
   entryId: string
