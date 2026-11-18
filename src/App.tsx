@@ -829,19 +829,21 @@ function App() {
             <FileText size={18} />
             <span className="nav-label">Recetas</span>
           </button>
-          <button
-            type="button"
-            className="nav-item"
-            aria-label="Seguimiento"
-            title={isSidebarCollapsed ? 'Seguimiento' : undefined}
-            onClick={() => {
-              setScheduleView('list')
-              document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-            }}
-          >
-            <ShieldCheck size={18} />
-            <span className="nav-label">Seguimiento</span>
-          </button>
+          {scheduleEvents.length > 0 && (
+            <button
+              type="button"
+              className="nav-item"
+              aria-label="Seguimiento"
+              title={isSidebarCollapsed ? 'Seguimiento' : undefined}
+              onClick={() => {
+                setScheduleView('list')
+                document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+              }}
+            >
+              <ShieldCheck size={18} />
+              <span className="nav-label">Seguimiento</span>
+            </button>
+          )}
         </nav>
 
         <div className="mini-card card-soft">
@@ -1384,7 +1386,10 @@ function App() {
           </div>
         </section>
       </main>
-      <nav className="mobile-nav" aria-label="Navegación móvil">
+      <nav
+        className={`mobile-nav${scheduleEvents.length === 0 ? ' is-setup' : ''}`}
+        aria-label="Navegación móvil"
+      >
         <button
           type="button"
           className={`mobile-nav-item ${scheduleView === 'today' ? 'is-active' : ''}`}
@@ -1406,19 +1411,20 @@ function App() {
           <FileText size={20} />
           <span>Receta</span>
         </button>
-        <button
-          type="button"
-          className={`mobile-nav-item ${scheduleView === 'list' ? 'is-active' : ''}`}
-          aria-current={scheduleView === 'list' ? 'page' : undefined}
-          disabled={scheduleEvents.length === 0}
-          onClick={() => {
-            setScheduleView('list')
-            document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
-          }}
-        >
-          <List size={20} />
-          <span>Listado</span>
-        </button>
+        {scheduleEvents.length > 0 && (
+          <button
+            type="button"
+            className={`mobile-nav-item ${scheduleView === 'list' ? 'is-active' : ''}`}
+            aria-current={scheduleView === 'list' ? 'page' : undefined}
+            onClick={() => {
+              setScheduleView('list')
+              document.getElementById('calendar-panel')?.scrollIntoView({ behavior: 'smooth' })
+            }}
+          >
+            <List size={20} />
+            <span>Listado</span>
+          </button>
+        )}
         <button
           type="button"
           className={`mobile-nav-item ${!isSidebarCollapsed ? 'is-active' : ''}`}

@@ -3174,6 +3174,10 @@
     backdrop-filter: blur(16px);
   }
 
+  .mobile-nav.is-setup {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .mobile-nav-item {
     display: grid;
     place-items: center;
