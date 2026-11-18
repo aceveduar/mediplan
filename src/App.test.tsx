@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { initialPrescriptionEntries } from './domain/prescriptions'
+import { toStoredAppData } from './storage/appData'
 
 function toLocalDateTimeValue(date: Date) {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
@@ -199,5 +200,131 @@ describe('MediPlan medication flow', () => {
     expect(backup.version).toBe(2)
     expect(backup.prescriptionEntries).toHaveLength(initialPrescriptionEntries.length)
     expect(backup.scheduleEvents).toHaveLength(0)
+  })
+
+  it('keeps current data until a valid backup replacement is confirmed', async () => {
+    const user = userEvent.setup()
+    const currentData = toStoredAppData({
+      prescriptionEntries: initialPrescriptionEntries,
+      confirmedItems: [initialPrescriptionEntries[0].id],
+      firstDoseTimes: {},
+      scheduleEvents: [{
+        id: 'existing-dose',
+        medicationName: initialPrescriptionEntries[0].name,
+        instructions: initialPrescriptionEntries[0].detail,
+        scheduledAt: new Date('2026-11-18T08:00:00.000Z'),
+        administeredAt: null,
+        status: 'pending',
+      }],
+    })
+    const replacementData = toStoredAppData({
+      prescriptionEntries: [],
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [],
+    })
+    window.localStorage.setItem('mediplan:amelia:v2', JSON.stringify(currentData))
+    render(<App />)
+
+    await user.upload(
+      screen.getByLabelText('Seleccionar respaldo JSON'),
+      new File([JSON.stringify(replacementData)], 'mediplan-backup.json', { type: 'application/json' }),
+    )
+
+    expect(screen.getByText('¿Reemplazar el plan actual?')).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem('mediplan:amelia:v2') ?? '{}').scheduleEvents)
+      .toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
+    expect(JSON.parse(window.localStorage.getItem('mediplan:amelia:v2') ?? '{}')).toEqual(currentData)
+  })
+
+  it('replaces data only after confirming a valid backup', async () => {
+    const user = userEvent.setup()
+    const currentData = toStoredAppData({
+      prescriptionEntries: initialPrescriptionEntries,
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [{
+        id: 'existing-dose',
+        medicationName: initialPrescriptionEntries[0].name,
+        instructions: initialPrescriptionEntries[0].detail,
+        scheduledAt: new Date('2026-11-18T08:00:00.000Z'),
+        administeredAt: null,
+        status: 'pending',
+      }],
+    })
+    const replacementData = toStoredAppData({
+      prescriptionEntries: [],
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [],
+    })
+    window.localStorage.setItem('mediplan:amelia:v2', JSON.stringify(currentData))
+    render(<App />)
+
+    await user.upload(
+      screen.getByLabelText('Seleccionar respaldo JSON'),
+      new File([JSON.stringify(replacementData)], 'mediplan-backup.json', { type: 'application/json' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Reemplazar datos' }))
+
+    const restored = JSON.parse(window.localStorage.getItem('mediplan:amelia:v2') ?? '{}')
+    expect(restored.prescriptionEntries).toEqual([])
+    expect(restored.scheduleEvents).toEqual([])
+    expect(screen.getByText('Respaldo restaurado.')).toBeTruthy()
+  })
+
+  it('keeps the active plan when storage rejects a confirmed restore', async () => {
+    const user = userEvent.setup()
+    const currentData = toStoredAppData({
+      prescriptionEntries: initialPrescriptionEntries,
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [{
+        id: 'existing-dose',
+        medicationName: initialPrescriptionEntries[0].name,
+        instructions: initialPrescriptionEntries[0].detail,
+        scheduledAt: new Date('2026-11-18T08:00:00.000Z'),
+        administeredAt: null,
+        status: 'pending',
+      }],
+    })
+    const replacementData = toStoredAppData({
+      prescriptionEntries: [],
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [],
+    })
+    window.localStorage.setItem('mediplan:amelia:v2', JSON.stringify(currentData))
+    render(<App />)
+    await user.upload(
+      screen.getByLabelText('Seleccionar respaldo JSON'),
+      new File([JSON.stringify(replacementData)], 'mediplan-backup.json', { type: 'application/json' }),
+    )
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Storage full', 'QuotaExceededError')
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await user.click(screen.getByRole('button', { name: 'Reemplazar datos' }))
+
+    expect(JSON.parse(window.localStorage.getItem('mediplan:amelia:v2') ?? '{}')).toEqual(currentData)
+    expect(screen.getByText('Plan activo')).toBeTruthy()
+    expect(screen.getByText('No se pudo guardar el respaldo. El plan actual no se reemplazó.'))
+      .toBeTruthy()
+  })
+
+  it('shows an error and does not prompt to replace data for invalid backup files', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.upload(
+      screen.getByLabelText('Seleccionar respaldo JSON'),
+      new File(['not json'], 'invalid.json', { type: 'application/json' }),
+    )
+
+    expect(screen.getByRole('alert').textContent).toContain('El archivo no contiene un JSON válido.')
+    expect(screen.queryByText('¿Reemplazar el plan actual?')).toBeNull()
   })
 })

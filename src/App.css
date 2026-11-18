@@ -28,7 +28,20 @@
 .export-json-actions {
   display: grid;
   justify-items: start;
+  gap: 12px;
   margin-top: 18px;
+}
+
+.backup-restore-controls {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  width: 100%;
+}
+
+.backup-import-confirmation {
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .export-json-button:hover {
@@ -306,7 +319,8 @@
 }
 
 .file-error,
-.file-notice {
+.file-notice,
+.file-success {
   margin-top: 12px;
   color: #475569;
   font-size: 0.85rem;
@@ -314,6 +328,11 @@
 
 .file-error {
   color: #b91c1c;
+  font-weight: 600;
+}
+
+.file-success {
+  color: var(--color-success);
   font-weight: 600;
 }
 

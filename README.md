@@ -21,4 +21,4 @@ npm run build
 
 GitHub Actions ejecuta lint, pruebas y compilación en cada pull request hacia `main`. Al actualizar `main`, vuelve a validar el proyecto antes de publicar `dist/` en GitHub Pages.
 
-Los datos solo se guardan en este navegador. Borrar sus datos o cambiar de dispositivo puede hacer que se pierdan; exporta una copia desde la aplicación si necesitas conservarlos.
+Los datos solo se guardan en este navegador. Borrar sus datos o cambiar de dispositivo puede hacer que se pierdan; descarga un respaldo para conservarlos y restáuralo en el dispositivo nuevo. Al restaurar, MediPlan valida el archivo y pide confirmación antes de reemplazar el plan actual.

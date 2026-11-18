@@ -27,6 +27,10 @@ export type StoredAppData = {
   scheduleEvents: StoredScheduleDose[]
 }
 
+export type AppDataBackupResult =
+  | { valid: true; data: StoredAppData }
+  | { valid: false; error: string }
+
 export type InitialAppData = Omit<StoredAppData, 'scheduleEvents'> & {
   scheduleEvents: ScheduledDose[]
   error: string
@@ -198,6 +202,21 @@ function migrateLegacyAppData(legacy: LegacyStoredAppData): StoredAppData {
     firstDoseTimes: legacy.firstDoseTimes,
     scheduleEvents: legacy.scheduleEvents,
   }
+}
+
+export function parseAppDataBackup(raw: string): AppDataBackupResult {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { valid: false, error: 'El archivo no contiene un JSON válido.' }
+  }
+
+  if (isStoredAppData(parsed)) return { valid: true, data: parsed }
+  if (isLegacyStoredAppData(parsed)) {
+    return { valid: true, data: migrateLegacyAppData(parsed) }
+  }
+  return { valid: false, error: 'El archivo no es un respaldo válido de MediPlan.' }
 }
 
 function loadSavedAppData(): LoadedAppData {

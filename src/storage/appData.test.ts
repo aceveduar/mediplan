@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { initialPrescriptionEntries } from '../domain/prescriptions'
-import { getInitialAppData, saveAppData, toStoredAppData } from './appData'
+import {
+  getInitialAppData,
+  parseAppDataBackup,
+  saveAppData,
+  toStoredAppData,
+} from './appData'
 
 const storage = new Map<string, string>()
 
@@ -19,6 +24,48 @@ afterEach(() => {
 })
 
 describe('app data persistence', () => {
+  it('accepts versioned backups and migrates legacy backup files', () => {
+    const legacyBackup = {
+      version: 1,
+      prescriptionEntries: [{
+        id: initialPrescriptionEntries[0].id,
+        name: initialPrescriptionEntries[0].name,
+        detail: initialPrescriptionEntries[0].detail,
+        uncertainty: initialPrescriptionEntries[0].uncertainty,
+      }],
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [],
+    }
+
+    const currentResult = parseAppDataBackup(JSON.stringify(toStoredAppData({
+      prescriptionEntries: initialPrescriptionEntries,
+      confirmedItems: [],
+      firstDoseTimes: {},
+      scheduleEvents: [],
+    })))
+    const legacyResult = parseAppDataBackup(JSON.stringify(legacyBackup))
+
+    expect(currentResult.valid).toBe(true)
+    expect(legacyResult.valid).toBe(true)
+    if (legacyResult.valid) {
+      expect(legacyResult.data.version).toBe(2)
+      expect(legacyResult.data.prescriptionEntries[0].schedule)
+        .toEqual(initialPrescriptionEntries[0].schedule)
+    }
+  })
+
+  it('rejects invalid backup JSON and unsupported data shapes', () => {
+    expect(parseAppDataBackup('{')).toEqual({
+      valid: false,
+      error: 'El archivo no contiene un JSON válido.',
+    })
+    expect(parseAppDataBackup(JSON.stringify({ version: 2 }))).toEqual({
+      valid: false,
+      error: 'El archivo no es un respaldo válido de MediPlan.',
+    })
+  })
+
   it('round-trips scheduled dose dates through the stored format', () => {
     const scheduledAt = new Date(2026, 10, 17, 8, 0)
     const administeredAt = new Date(2026, 10, 17, 8, 12)

@@ -5,7 +5,12 @@ import {
   getScheduledDoseTimes,
   hasValidDoseAmount,
 } from '../domain/schedule'
-import { getInitialAppData, saveAppData, toStoredAppData } from '../storage/appData'
+import {
+  getInitialAppData,
+  saveAppData,
+  toStoredAppData,
+  type StoredAppData,
+} from '../storage/appData'
 
 type AppDataChanges = {
   prescriptionEntries?: PrescriptionEntry[]
@@ -172,6 +177,29 @@ export function useMediPlan() {
     persistAppState({ scheduleEvents: nextEvents })
   }
 
+  const restoreAppData = (data: StoredAppData): boolean => {
+    try {
+      saveAppData(data)
+    } catch (error) {
+      console.error('No se pudo restaurar el respaldo de MediPlan:', error)
+      setPersistenceError('No se pudo guardar el respaldo. El plan actual no se reemplazó.')
+      return false
+    }
+
+    setPrescriptionEntries(data.prescriptionEntries)
+    setConfirmedItems(data.confirmedItems)
+    setFirstDoseTimes(data.firstDoseTimes)
+    setScheduleEvents(data.scheduleEvents.map((event) => ({
+      ...event,
+      scheduledAt: new Date(event.scheduledAt),
+      administeredAt: event.administeredAt ? new Date(event.administeredAt) : null,
+      status: event.status ?? 'pending',
+    })))
+    setPersistenceError('')
+    setCanPersist(true)
+    return true
+  }
+
   return {
     prescriptionEntries,
     confirmedItems,
@@ -188,5 +216,6 @@ export function useMediPlan() {
     updateDoseStatus,
     createSchedule,
     updateScheduleEvents,
+    restoreAppData,
   }
 }

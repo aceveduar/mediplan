@@ -27,6 +27,7 @@ import {
 import { addDays, addWeeks, format, isSameDay, startOfWeek, subWeeks } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { DoseListView, type DoseFilter } from './components/DoseListView'
+import { BackupRestore } from './components/BackupRestore'
 import { MobileNavigation, Sidebar } from './components/Navigation'
 import { PrescriptionReviewList } from './components/PrescriptionReviewList'
 import {
@@ -69,6 +70,7 @@ function App() {
     updateDoseStatus,
     createSchedule,
     updateScheduleEvents,
+    restoreAppData,
   } = useMediPlan()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
     () => window.matchMedia('(max-width: 980px)').matches,
@@ -623,6 +625,22 @@ function App() {
               <button type="button" className="export-json-button" onClick={downloadScheduleJson}>
                 Descargar respaldo JSON
               </button>
+              <BackupRestore
+                onRestore={(data) => {
+                  const restored = restoreAppData(data)
+                  if (restored) {
+                    setScheduleView('today')
+                    setSelectedCalendarDay(currentTime)
+                    setVisibleWeekStart(startOfWeek(currentTime, { weekStartsOn: 1 }))
+                    setIsScheduleAdjustmentOpen(false)
+                    setScheduleAdjustmentTimes({})
+                    setScheduleAdjustmentConfirmed(false)
+                    setScheduleAdjustmentError('')
+                    setScheduleError('')
+                  }
+                  return restored
+                }}
+              />
             </div>
           </div>
         </section>
