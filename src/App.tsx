@@ -100,11 +100,13 @@ function formatScheduleTime(date: Date, datePattern?: string) {
   return `${dateLabel}${format(date, 'h:mm')} ${date.getHours() < 12 ? 'AM' : 'PM'}`
 }
 
-const nightWindowLabel = '10:00 PM–6:00 AM'
+const nightWindowStartHour = 20
+const nightWindowEndHour = 7
+const nightWindowLabel = '8:00 PM–7:00 AM'
 
 function isNightTime(date: Date) {
   const hour = date.getHours()
-  return hour >= 22 || hour < 6
+  return hour >= nightWindowStartHour || hour < nightWindowEndHour
 }
 
 function getScheduledDoseTimes(firstDose: Date, intervalHours: number, totalDoses: number) {
